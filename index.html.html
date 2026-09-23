@@ -1,0 +1,1777 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeoStats · Laboratorio Matemático Inmersivo</title>
+
+<!-- ============================================================
+     LIBRERÍAS EXTERNAS (CDN)
+     - Plotly.js: gráficas 2D interactivas (plano cartesiano)
+     - math.js: evaluación segura de expresiones matemáticas (sin eval)
+     - A-Frame: escenas 3D / WebXR
+     ============================================================ -->
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js"></script>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+<style>
+/* =========================================================
+   1. TOKENS DE DISEÑO — identidad visual GeoStats
+   Cambia estas variables para ajustar la paleta global.
+   ========================================================= */
+:root{
+  --bg-deep:#050d1f;
+  --bg-panel:#0b1830;
+  --bg-panel-2:#0e2140;
+  --line-soft:rgba(255,255,255,.08);
+  --blue-bright:#00C2FF;
+  --green:#B8EF2B;
+  --orange:#FF7A1A;
+  --white:#F4F8FF;
+  --muted:#8FA3C4;
+  --danger:#FF5C5C;
+  --radius:14px;
+  --font-display:'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-body:'Inter', 'Segoe UI', sans-serif;
+  --focus-ring: 0 0 0 3px rgba(0,194,255,.55);
+}
+:root.contrast{
+  --bg-deep:#000000;
+  --bg-panel:#000000;
+  --bg-panel-2:#0a0a0a;
+  --white:#ffffff;
+  --muted:#dcdcdc;
+  --blue-bright:#5FE0FF;
+  --green:#D4FF4D;
+  --line-soft:rgba(255,255,255,.35);
+}
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(0,194,255,.10), transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(184,239,43,.06), transparent 45%),
+    var(--bg-deep);
+  color:var(--white);
+  font-family:var(--font-body);
+  min-height:100vh;
+}
+a{ color:var(--blue-bright); }
+button, select, input{ font-family:inherit; }
+:focus-visible{ outline:none; box-shadow:var(--focus-ring); border-radius:6px; }
+
+.skip-link{
+  position:absolute; left:-999px; top:0; background:var(--blue-bright); color:#001522;
+  padding:10px 16px; z-index:999; font-weight:700; border-radius:0 0 8px 0;
+}
+.skip-link:focus{ left:0; }
+
+/* ---------- Cuadrícula científica de fondo ---------- */
+.sci-grid{
+  position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.35;
+  background-image:
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size:42px 42px;
+  mask-image:radial-gradient(circle at 50% 30%, black, transparent 75%);
+}
+
+/* ---------- Layout general ---------- */
+.app{ position:relative; z-index:1; display:flex; min-height:100vh; }
+
+.sidebar{
+  width:250px; flex:0 0 250px; background:linear-gradient(180deg, var(--bg-panel), var(--bg-deep));
+  border-right:1px solid var(--line-soft); padding:22px 16px; position:sticky; top:0; height:100vh;
+  overflow-y:auto;
+}
+.brand{ display:flex; flex-direction:column; gap:2px; margin-bottom:26px; }
+.brand .mark{ font-family:var(--font-display); font-weight:700; font-size:1.5rem; letter-spacing:.5px; color:var(--white); }
+.brand .mark span{ color:var(--blue-bright); }
+.brand .sub{ font-size:.72rem; color:var(--muted); letter-spacing:.3px; }
+
+.nav{ display:flex; flex-direction:column; gap:6px; }
+.nav-btn{
+  display:flex; align-items:center; gap:10px; text-align:left; background:transparent; border:1px solid transparent;
+  color:var(--muted); padding:11px 12px; border-radius:10px; cursor:pointer; font-size:.92rem; font-weight:500;
+  transition:background .15s, color .15s, border-color .15s;
+}
+.nav-btn:hover{ background:rgba(255,255,255,.05); color:var(--white); }
+.nav-btn.active{ background:rgba(0,194,255,.12); border-color:rgba(0,194,255,.4); color:var(--white); }
+.nav-btn .dot{ width:7px; height:7px; border-radius:50%; background:var(--blue-bright); flex:0 0 auto; }
+
+.engine-status{
+  margin-top:20px; padding:10px 12px; border:1px solid var(--line-soft); border-radius:10px; font-size:.72rem; color:var(--muted);
+  display:flex; align-items:center; gap:8px;
+}
+.engine-status .led{ width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green); }
+.engine-status .led.bad{ background:var(--danger); box-shadow:0 0 8px var(--danger); }
+
+.a11y-controls{ margin-top:16px; display:flex; flex-direction:column; gap:8px; }
+.a11y-controls button{
+  background:var(--bg-panel-2); border:1px solid var(--line-soft); color:var(--white); padding:8px 10px;
+  border-radius:8px; cursor:pointer; font-size:.78rem; text-align:left;
+}
+.a11y-controls button:hover{ border-color:var(--blue-bright); }
+
+.menu-toggle{
+  display:none; position:fixed; top:14px; left:14px; z-index:50; background:var(--bg-panel);
+  border:1px solid var(--line-soft); color:var(--white); border-radius:8px; padding:8px 10px; cursor:pointer;
+}
+
+main{ flex:1; min-width:0; padding:28px 34px 60px; }
+.section{ display:none; animation:fade .25s ease; }
+.section.active{ display:block; }
+@keyframes fade{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+
+h1.page-title{ font-family:var(--font-display); font-size:2rem; margin:0 0 6px; }
+.page-lede{ color:var(--muted); max-width:680px; margin:0 0 26px; line-height:1.55; }
+
+.card{
+  background:linear-gradient(180deg, rgba(14,33,64,.75), rgba(11,24,48,.75));
+  border:1px solid var(--line-soft); border-radius:var(--radius); padding:20px 22px; backdrop-filter:blur(6px);
+}
+.grid-2{ display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start; }
+.grid-2 .card{ height:100%; }
+@media (max-width:1100px){ .grid-2{ grid-template-columns:1fr; } }
+
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:.78rem; color:var(--muted); margin-bottom:5px; }
+.field-row{ display:flex; gap:10px; align-items:center; }
+.field input[type=number], .field input[type=text]{
+  width:100%; background:var(--bg-deep); border:1px solid var(--line-soft); color:var(--white);
+  padding:8px 10px; border-radius:8px; font-size:.9rem;
+}
+.field input[type=range]{ width:100%; accent-color:var(--blue-bright); }
+.slider-val{ font-variant-numeric:tabular-nums; color:var(--blue-bright); font-weight:700; min-width:52px; text-align:right; }
+
+.btn{
+  background:var(--blue-bright); color:#00131f; border:none; padding:9px 16px; border-radius:9px;
+  font-weight:700; cursor:pointer; font-size:.85rem;
+}
+.btn.secondary{ background:transparent; color:var(--white); border:1px solid var(--line-soft); }
+.btn.accent{ background:var(--green); color:#0b1400; }
+.btn.warn{ background:var(--orange); color:#1a0800; }
+.btn:hover{ filter:brightness(1.08); }
+.btn-row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+
+table.props{ width:100%; border-collapse:collapse; font-size:.87rem; }
+table.props td{ padding:6px 4px; border-bottom:1px solid var(--line-soft); }
+table.props td:first-child{ color:var(--muted); width:55%; }
+table.props td:last-child{ color:var(--blue-bright); font-weight:600; }
+
+.tag{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:.7rem; font-weight:700; letter-spacing:.3px; }
+.tag.blue{ background:rgba(0,194,255,.15); color:var(--blue-bright); }
+.tag.green{ background:rgba(184,239,43,.15); color:var(--green); }
+.tag.orange{ background:rgba(255,122,26,.18); color:var(--orange); }
+
+.explain-box{
+  border-left:3px solid var(--blue-bright); background:rgba(0,194,255,.06); padding:12px 14px;
+  border-radius:0 10px 10px 0; font-size:.87rem; line-height:1.6; margin-top:12px;
+}
+.explain-box ol, .explain-box ul{ margin:6px 0 0 18px; padding:0; }
+.speak-btn{ background:none; border:1px solid var(--line-soft); color:var(--muted); border-radius:8px; padding:4px 9px; cursor:pointer; font-size:.75rem; margin-top:8px; }
+.speak-btn:hover{ color:var(--white); border-color:var(--blue-bright); }
+
+.conjetura{
+  margin-top:14px; padding:14px; border-radius:10px; background:rgba(255,122,26,.07); border:1px dashed rgba(255,122,26,.5);
+}
+.conjetura summary{ cursor:pointer; font-weight:700; color:var(--orange); font-size:.85rem; }
+.conjetura .body{ margin-top:8px; font-size:.85rem; color:var(--white); line-height:1.55; }
+
+.plot-wrap{ width:100%; height:420px; border-radius:10px; overflow:hidden; border:1px solid var(--line-soft); }
+.tabs{ display:flex; gap:6px; margin-bottom:12px; }
+.tab-btn{
+  background:var(--bg-panel-2); border:1px solid var(--line-soft); color:var(--muted); padding:7px 14px;
+  border-radius:8px 8px 0 0; cursor:pointer; font-size:.82rem;
+}
+.tab-btn.active{ color:var(--white); border-color:var(--blue-bright); background:rgba(0,194,255,.1); }
+.tab-pane{ display:none; }
+.tab-pane.active{ display:block; }
+
+.aframe-wrap{ width:100%; height:380px; border-radius:10px; overflow:hidden; border:1px solid var(--line-soft); position:relative; background:#020814; }
+.aframe-controls{ position:absolute; top:8px; right:8px; display:flex; gap:6px; z-index:5; }
+.aframe-controls button{ background:rgba(5,13,31,.85); border:1px solid var(--line-soft); color:var(--white); padding:6px 9px; border-radius:7px; cursor:pointer; font-size:.72rem; }
+
+.figure-picker{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+.figure-chip{
+  background:var(--bg-panel-2); border:1px solid var(--line-soft); color:var(--muted); padding:9px 16px;
+  border-radius:999px; cursor:pointer; font-size:.85rem; font-weight:600;
+}
+.figure-chip.active{ background:linear-gradient(90deg, rgba(0,194,255,.25), rgba(184,239,43,.15)); color:var(--white); border-color:var(--blue-bright); }
+
+textarea{
+  width:100%; min-height:110px; background:var(--bg-deep); border:1px solid var(--line-soft); color:var(--white);
+  border-radius:8px; padding:10px; font-size:.85rem; resize:vertical; font-family:monospace;
+}
+
+.stat-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:10px; margin-top:14px; }
+.stat-box{ background:var(--bg-panel-2); border:1px solid var(--line-soft); border-radius:10px; padding:10px 12px; text-align:center; }
+.stat-box .v{ font-size:1.2rem; font-weight:700; color:var(--green); }
+.stat-box .l{ font-size:.68rem; color:var(--muted); margin-top:2px; }
+
+.dist-formula{ font-size:1rem; background:var(--bg-deep); padding:12px 14px; border-radius:8px; margin:10px 0; color:var(--blue-bright); overflow-x:auto; }
+
+.quiz-box{ margin-top:16px; padding:14px; border-radius:10px; background:rgba(184,239,43,.06); border:1px solid rgba(184,239,43,.35); }
+.quiz-answer{ margin-top:8px; font-size:.85rem; }
+.quiz-answer.correct{ color:var(--green); }
+.quiz-answer.wrong{ color:var(--danger); }
+.reto-item{ padding:12px 0; border-bottom:1px solid var(--line-soft); }
+.reto-item:last-child{ border-bottom:none; }
+
+.rubric-table{ width:100%; border-collapse:collapse; margin-top:12px; font-size:.85rem; }
+.rubric-table th, .rubric-table td{ border:1px solid var(--line-soft); padding:8px 10px; text-align:left; }
+.rubric-table th{ background:var(--bg-panel-2); color:var(--muted); }
+
+.route-steps{ display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
+.route-step{ flex:1; min-width:130px; background:var(--bg-panel-2); border:1px solid var(--line-soft); border-radius:10px; padding:10px; }
+.route-step .n{ color:var(--orange); font-weight:700; font-size:.75rem; }
+
+.toast{
+  position:fixed; bottom:20px; right:20px; background:var(--bg-panel); border:1px solid var(--blue-bright);
+  color:var(--white); padding:12px 18px; border-radius:10px; z-index:200; font-size:.85rem; max-width:320px;
+  box-shadow:0 8px 24px rgba(0,0,0,.4);
+}
+
+.home-hero{ display:grid; grid-template-columns:1.1fr .9fr; gap:26px; align-items:center; }
+@media (max-width:900px){ .home-hero{ grid-template-columns:1fr; } }
+.home-hero h1{ font-family:var(--font-display); font-size:2.6rem; line-height:1.08; margin:0 0 14px; }
+.home-hero h1 em{ font-style:normal; color:var(--blue-bright); }
+.hero-visual{ display:flex; align-items:center; justify-content:center; padding:14px; overflow:hidden; min-height:280px; }
+.hero-visual svg{ width:100%; height:auto; max-width:420px; }
+.module-cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-top:30px; }
+.module-cards .card{ cursor:pointer; }
+.module-cards .card:hover{ border-color:var(--blue-bright); }
+.module-cards .card h3{ margin:0 0 6px; font-family:var(--font-display); font-size:1.05rem; }
+.module-cards .card p{ margin:0; color:var(--muted); font-size:.82rem; line-height:1.5; }
+
+@media (max-width:820px){
+  .menu-toggle{ display:block; }
+  .sidebar{ position:fixed; left:-270px; top:0; z-index:40; transition:left .2s; box-shadow:0 0 40px rgba(0,0,0,.5); }
+  .sidebar.open{ left:0; }
+  main{ padding:70px 16px 60px; }
+  .home-hero h1{ font-size:1.9rem; }
+}
+
+/* =========================================================
+   PORTADA (splash de bienvenida)
+   Cubre toda la pantalla al cargar; "Comencemos" la retira.
+   La app de detrás ya está renderizada (no oculta con
+   display:none) para evitar que Plotly/A-Frame midan un
+   contenedor de tamaño cero.
+   ========================================================= */
+.splash{
+  position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(0,194,255,.16), transparent 45%),
+    radial-gradient(circle at 85% 75%, rgba(184,239,43,.12), transparent 45%),
+    radial-gradient(circle at 75% 15%, rgba(255,122,26,.10), transparent 40%),
+    var(--bg-deep);
+  padding:24px; overflow:hidden; transition:opacity .45s ease, visibility .45s ease;
+}
+.splash.hidden{ opacity:0; visibility:hidden; pointer-events:none; }
+.splash-shapes{ position:absolute; inset:0; width:100%; height:100%; opacity:.55; }
+.splash-shapes path, .splash-shapes circle, .splash-shapes ellipse, .splash-shapes line{ fill:none; }
+.shape-float{ animation: shapeFloat 7s ease-in-out infinite; transform-origin:center; }
+.shape-float.d2{ animation-duration:9s; animation-delay:.6s; }
+.shape-float.d3{ animation-duration:11s; animation-delay:1.1s; }
+.shape-spin{ animation: shapeSpin 40s linear infinite; transform-origin:center; }
+@keyframes shapeFloat{ 0%,100%{ transform:translateY(0);} 50%{ transform:translateY(-16px);} }
+@keyframes shapeSpin{ from{ transform:rotate(0deg);} to{ transform:rotate(360deg);} }
+@media (prefers-reduced-motion: reduce){ .shape-float, .shape-spin{ animation:none; } }
+
+.splash-card{
+  position:relative; z-index:2; max-width:640px; width:100%; text-align:center;
+  background:linear-gradient(180deg, rgba(14,33,64,.72), rgba(8,17,36,.82));
+  border:1px solid var(--line-soft); border-radius:22px; padding:42px 38px 36px;
+  backdrop-filter:blur(8px); box-shadow:0 30px 80px rgba(0,0,0,.5);
+}
+.splash-kicker{ font-size:.72rem; letter-spacing:2.5px; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+.splash-title{ font-family:var(--font-display); font-weight:700; font-size:3.4rem; line-height:1; margin:0; color:var(--white); }
+.splash-title span{ color:var(--blue-bright); }
+.splash-slogan{ margin:14px 0 0; font-size:1.08rem; color:var(--green); font-weight:600; }
+.splash-desc{ margin:16px auto 0; max-width:480px; color:var(--muted); font-size:.9rem; line-height:1.6; }
+.splash-meta{ display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-top:20px; }
+.splash-cta{ margin-top:28px; }
+.splash-cta button{ font-size:1rem; padding:13px 32px; border-radius:12px; box-shadow:0 10px 26px rgba(0,194,255,.28); }
+@media (max-width:560px){
+  .splash-title{ font-size:2.3rem; }
+  .splash-card{ padding:30px 22px 28px; }
+}
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<a class="skip-link" href="#main-content">Saltar al contenido</a>
+<div class="sci-grid" aria-hidden="true"></div>
+<div id="live-region" aria-live="polite" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;"></div>
+
+<!-- ============================ PORTADA ============================ -->
+<div class="splash" id="splashScreen" role="dialog" aria-modal="true" aria-labelledby="splashTitle">
+  <svg class="splash-shapes" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <!-- parábola -->
+    <path class="shape-float" d="M120,620 Q430,60 740,620" stroke="#00C2FF" stroke-width="4" opacity="0.55"/>
+    <!-- circunferencia -->
+    <circle class="shape-spin" cx="1000" cy="150" r="85" stroke="#B8EF2B" stroke-width="3" opacity="0.5"/>
+    <!-- elipse -->
+    <ellipse class="shape-float d2" cx="200" cy="150" rx="130" ry="65" stroke="#FF7A1A" stroke-width="3" opacity="0.5"/>
+    <!-- curva gaussiana -->
+    <path class="shape-float d3" d="M60,720 C 260,720 300,480 460,480 C 620,480 660,720 860,720" stroke="#B8EF2B" stroke-width="4" opacity="0.45"/>
+    <!-- asíntotas de hipérbola -->
+    <line class="shape-float d2" x1="880" y1="560" x2="1150" y2="760" stroke="#00C2FF" stroke-width="2" stroke-dasharray="6 8" opacity="0.4"/>
+    <line class="shape-float d2" x1="1150" y1="560" x2="880" y2="760" stroke="#00C2FF" stroke-width="2" stroke-dasharray="6 8" opacity="0.4"/>
+    <!-- nube de dispersión -->
+    <circle cx="980" cy="640" r="5" fill="#FF7A1A" opacity="0.6"/>
+    <circle cx="1010" cy="660" r="4" fill="#FF7A1A" opacity="0.5"/>
+    <circle cx="950" cy="670" r="6" fill="#FF7A1A" opacity="0.55"/>
+    <circle cx="1030" cy="610" r="3" fill="#FF7A1A" opacity="0.5"/>
+    <circle cx="90" cy="380" r="4" fill="#00C2FF" opacity="0.5"/>
+    <circle cx="130" cy="420" r="6" fill="#00C2FF" opacity="0.4"/>
+    <circle cx="60" cy="440" r="3" fill="#00C2FF" opacity="0.5"/>
+  </svg>
+  <div class="splash-card">
+    <div class="splash-kicker">Programa de Licenciatura en Matemáticas</div>
+    <h1 class="splash-title" id="splashTitle">Geo<span>Stats</span></h1>
+    <p class="splash-slogan">Ecuaciones que cobran vida frente a tus ojos.</p>
+    <p class="splash-desc">GeoStats es un laboratorio matemático interactivo para explorar la geometría analítica y la estadística en 2D, 3D y realidad extendida (XR). Ajusta ecuaciones con deslizadores, observa cómo cambian sus elementos en tiempo real, compara distribuciones de probabilidad con tus propios datos y ponte a prueba con retos pensados para tu aprendizaje.</p>
+    <div class="splash-meta">
+      <span class="tag blue">Geometría analítica</span>
+      <span class="tag green">Estadística</span>
+      <span class="tag orange">Modo docente</span>
+    </div>
+    <p style="margin-top:18px;color:var(--muted);font-size:.82rem;">Autor: Carlos Cortes</p>
+    <div class="splash-cta">
+      <button class="btn accent" id="btnComencemos">Comencemos →</button>
+    </div>
+  </div>
+</div>
+
+<button class="menu-toggle" id="menuToggle" aria-label="Abrir menú" aria-expanded="false">☰ Menú</button>
+
+<div class="app">
+  <!-- ============================ SIDEBAR ============================ -->
+  <nav class="sidebar" id="sidebar" aria-label="Navegación principal">
+    <div class="brand">
+      <div class="mark">Geo<span>Stats</span></div>
+      <div class="sub">Laboratorio Matemático Inmersivo</div>
+
+    </div>
+    <div class="nav" role="tablist" aria-label="Módulos">
+      <button class="nav-btn active" data-section="inicio" role="tab" aria-selected="true"><span class="dot"></span>Inicio</button>
+      <button class="nav-btn" data-section="figuras" role="tab" aria-selected="false"><span class="dot"></span>Figuras geométricas</button>
+      <button class="nav-btn" data-section="explorar" role="tab" aria-selected="false"><span class="dot"></span>Modo explorar</button>
+      <button class="nav-btn" data-section="estadistica" role="tab" aria-selected="false"><span class="dot"></span>Estadística</button>
+      <button class="nav-btn" data-section="docente" role="tab" aria-selected="false"><span class="dot"></span>Modo docente</button>
+    </div>
+
+    <div class="engine-status" id="engineStatus">
+      <span class="led" id="engineLed"></span>
+      <span id="engineText">Motor matemático: verificando…</span>
+    </div>
+
+    <div class="a11y-controls">
+      <button id="btnContrast" aria-pressed="false">◐ Alto contraste</button>
+      <button id="btnSpeakToggle" aria-pressed="false">🔊 Narración: activada</button>
+    </div>
+  </nav>
+
+  <!-- ============================ CONTENIDO ============================ -->
+  <main id="main-content">
+
+    <!-- ---------------- INICIO ---------------- -->
+    <section class="section active" id="sec-inicio" aria-labelledby="tit-inicio">
+      <div class="home-hero">
+        <div>
+          <span class="tag blue">Licenciatura en Matemáticas</span>
+          <h1 id="tit-inicio">Explora la geometría analítica y la estadística <em>en 2D, 3D y XR.</em></h1>
+          <p class="page-lede">GeoStats convierte cada ecuación en una figura viva: modifica parámetros con controles deslizantes y observa, al instante, cómo cambian el vértice, los focos, las asíntotas o la distribución de probabilidad. Todo corre en tu navegador — sin backend, sin instalación.</p>
+          <div class="btn-row">
+            <button class="btn" onclick="goTo('figuras')">Ir a Figuras geométricas</button>
+            <button class="btn secondary" onclick="goTo('estadistica')">Ir a Estadística</button>
+          </div>
+        </div>
+        <div class="card hero-visual" aria-hidden="true">
+          <svg viewBox="0 0 420 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ilustración de figuras geométricas y curvas estadísticas de GeoStats">
+            <defs>
+              <radialGradient id="heroGlow" cx="50%" cy="35%" r="65%">
+                <stop offset="0%" stop-color="#00C2FF" stop-opacity="0.22"/>
+                <stop offset="100%" stop-color="#00C2FF" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <rect x="0" y="0" width="420" height="380" fill="url(#heroGlow)"/>
+            <!-- piso / rejilla en perspectiva: guiño al modo 3D/XR -->
+            <g stroke="#1c3560" stroke-width="1.2" opacity="0.8">
+              <path d="M40,330 L380,330"/>
+              <path d="M65,300 L355,300"/>
+              <path d="M90,270 L330,270"/>
+              <path d="M210,330 L210,255"/>
+              <path d="M130,330 L155,255"/>
+              <path d="M290,330 L265,255"/>
+              <path d="M60,330 L100,255"/>
+              <path d="M360,330 L320,255"/>
+            </g>
+            <!-- parábola -->
+            <path class="shape-float" d="M55,235 Q210,55 365,235" fill="none" stroke="#00C2FF" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="210" cy="99" r="6" fill="#00C2FF"/>
+            <!-- circunferencia -->
+            <circle class="shape-spin" cx="322" cy="150" r="46" fill="none" stroke="#B8EF2B" stroke-width="4" opacity="0.9"/>
+            <!-- elipse -->
+            <ellipse class="shape-float d2" cx="95" cy="150" rx="58" ry="34" fill="none" stroke="#FF7A1A" stroke-width="4" stroke-dasharray="2 7" opacity="0.9"/>
+            <!-- curva gaussiana -->
+            <path class="shape-float d3" d="M55,205 C 120,205 140,120 210,120 C 280,120 300,205 365,205" fill="none" stroke="#B8EF2B" stroke-width="4" opacity="0.85"/>
+            <!-- barras de histograma -->
+            <g fill="#00C2FF" opacity="0.55">
+              <rect x="140" y="248" width="14" height="18" rx="2"/>
+              <rect x="160" y="234" width="14" height="32" rx="2"/>
+              <rect x="180" y="222" width="14" height="44" rx="2"/>
+              <rect x="200" y="214" width="14" height="52" rx="2"/>
+              <rect x="220" y="224" width="14" height="42" rx="2"/>
+              <rect x="240" y="240" width="14" height="26" rx="2"/>
+              <rect x="260" y="252" width="14" height="14" rx="2"/>
+            </g>
+            <!-- puntos de dispersión flotantes -->
+            <g fill="#FF7A1A">
+              <circle class="shape-float" cx="340" cy="80" r="5"/>
+              <circle class="shape-float d2" cx="358" cy="100" r="3.5"/>
+              <circle class="shape-float d3" cx="320" cy="65" r="3"/>
+              <circle class="shape-float d2" cx="45" cy="95" r="4"/>
+              <circle class="shape-float d3" cx="70" cy="75" r="3"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="module-cards">
+        <div class="card" onclick="goTo('figuras')" tabindex="0" role="button" aria-label="Ir a Figuras geométricas">
+          <h3>📐 Figuras geométricas</h3>
+          <p>Recta, parábola, circunferencia, elipse e hipérbola: ecuación, gráfica 2D/3D y explicación paso a paso.</p>
+        </div>
+        <div class="card" onclick="goTo('explorar')" tabindex="0" role="button" aria-label="Ir a Modo explorar">
+          <h3>🎛️ Modo explorar</h3>
+          <p>Mueve los deslizadores de a, b y c y descubre experimentalmente cómo cambia cada figura.</p>
+        </div>
+        <div class="card" onclick="goTo('estadistica')" tabindex="0" role="button" aria-label="Ir a Estadística">
+          <h3>📊 Estadística</h3>
+          <p>Pega tus datos y compara siete distribuciones de probabilidad con sus fórmulas y gráficas.</p>
+        </div>
+        <div class="card" onclick="goTo('docente')" tabindex="0" role="button" aria-label="Ir a Modo docente">
+          <h3>🧑‍🏫 Modo docente</h3>
+          <p>Diseña secuencias didácticas con ruta Observar–Calcular–Explicar–Transferir y rúbrica automática.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- FIGURAS GEOMÉTRICAS ---------------- -->
+    <section class="section" id="sec-figuras" aria-labelledby="tit-figuras">
+      <h1 class="page-title" id="tit-figuras">Figuras geométricas</h1>
+      <p class="page-lede">Elige una figura, ajusta su ecuación y observa en tiempo real sus elementos característicos, su representación 3D y una explicación paso a paso.</p>
+
+      <div class="figure-picker" role="tablist" aria-label="Selector de figura">
+        <button class="figure-chip active" data-fig="recta">Recta</button>
+        <button class="figure-chip" data-fig="parabola">Parábola</button>
+        <button class="figure-chip" data-fig="circunferencia">Circunferencia</button>
+        <button class="figure-chip" data-fig="elipse">Elipse</button>
+        <button class="figure-chip" data-fig="hiperbola">Hipérbola</button>
+      </div>
+
+      <div id="figureHost"></div>
+    </section>
+
+    <!-- ---------------- MODO EXPLORAR ---------------- -->
+    <section class="section" id="sec-explorar" aria-labelledby="tit-explorar">
+      <h1 class="page-title" id="tit-explorar">Modo explorar</h1>
+      <p class="page-lede">Selecciona una figura y mueve únicamente los deslizadores: sin escribir ecuaciones, descubre por experimentación cómo cada parámetro transforma la gráfica, el vértice, las raíces o la concavidad.</p>
+
+      <div class="figure-picker" role="tablist" aria-label="Selector de figura a explorar">
+        <button class="figure-chip active" data-figx="recta">Recta</button>
+        <button class="figure-chip" data-figx="parabola">Parábola</button>
+        <button class="figure-chip" data-figx="circunferencia">Circunferencia</button>
+        <button class="figure-chip" data-figx="elipse">Elipse</button>
+        <button class="figure-chip" data-figx="hiperbola">Hipérbola</button>
+      </div>
+
+      <div id="exploreHost"></div>
+    </section>
+
+    <!-- ---------------- ESTADÍSTICA ---------------- -->
+    <section class="section" id="sec-estadistica" aria-labelledby="tit-estadistica">
+      <h1 class="page-title" id="tit-estadistica">Estadística</h1>
+      <p class="page-lede">Pega tus datos (separados por comas, espacios o saltos de línea) y compáralos contra siete distribuciones clásicas, cada una con su fórmula, su gráfica y controles interactivos.</p>
+
+      <div class="card" style="margin-bottom:20px;">
+        <div class="field">
+          <label for="statData">Datos de entrada</label>
+          <textarea id="statData" placeholder="Ej: 4, 7, 8, 8, 9, 12, 15, 15, 15, 18, 21">2, 4, 4, 4, 5, 5, 7, 9, 3, 6, 6, 8, 8, 5, 7, 6, 4, 3, 5, 6</textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="btnAnalyze">Analizar datos</button>
+          <button class="btn secondary" id="btnClearData">Limpiar</button>
+        </div>
+        <div class="stat-grid" id="descStats"></div>
+      </div>
+
+      <div class="figure-picker" role="tablist" aria-label="Selector de distribución">
+        <button class="figure-chip active" data-dist="uniforme">Uniforme</button>
+        <button class="figure-chip" data-dist="bernoulli">Bernoulli</button>
+        <button class="figure-chip" data-dist="exponencial">Exponencial</button>
+        <button class="figure-chip" data-dist="binomial">Binomial</button>
+        <button class="figure-chip" data-dist="poisson">Poisson</button>
+        <button class="figure-chip" data-dist="gaussiana">Gaussiana (Normal)</button>
+        <button class="figure-chip" data-dist="chi2">Chi cuadrado</button>
+      </div>
+
+      <div id="distHost"></div>
+    </section>
+
+    <!-- ---------------- MODO DOCENTE ---------------- -->
+    <section class="section" id="sec-docente" aria-labelledby="tit-docente">
+      <h1 class="page-title" id="tit-docente">Modo docente</h1>
+      <p class="page-lede">Construye una secuencia didáctica siguiendo la ruta Observar → Calcular → Explicar → Transferir. GeoStats genera automáticamente el guion para tus estudiantes y una rúbrica de 100 puntos.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="field"><label for="tTitulo">Título de la secuencia</label><input type="text" id="tTitulo" placeholder="Ej: Descubriendo la parábola en el tiro parabólico"></div>
+          <div class="field"><label for="tNivel">Nivel educativo</label>
+            <select id="tNivel" style="width:100%;background:var(--bg-deep);color:var(--white);border:1px solid var(--line-soft);border-radius:8px;padding:8px;">
+              <option>Básica primaria</option><option selected>Básica secundaria (6°-9°)</option><option>Media (10°-11°)</option><option>Educación superior</option>
+            </select>
+          </div>
+          <div class="field"><label for="tDuracion">Duración</label><input type="text" id="tDuracion" placeholder="Ej: 2 sesiones de 60 minutos"></div>
+          <div class="field"><label for="tObjetivo">Objetivo didáctico</label><textarea id="tObjetivo" style="min-height:60px;" placeholder="¿Qué deben aprender a hacer los estudiantes?"></textarea></div>
+          <div class="field"><label for="tPregunta">Pregunta retadora</label><textarea id="tPregunta" style="min-height:60px;" placeholder="¿Qué pregunta abrirá la clase?"></textarea></div>
+          <div class="field"><label for="tEvidencia">Evidencia de aprendizaje</label><textarea id="tEvidencia" style="min-height:60px;" placeholder="¿Cómo sabrás que aprendieron?"></textarea></div>
+          <div class="btn-row">
+            <button class="btn" id="btnGenerarGuion">Generar guion y rúbrica</button>
+            <button class="btn secondary" id="btnGuardarLocal">Guardar</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn secondary" id="btnExportar">Exportar JSON</button>
+            <label class="btn secondary" style="cursor:pointer;">Importar JSON<input type="file" id="inputImportar" accept="application/json" style="display:none;"></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="route-steps">
+            <div class="route-step"><div class="n">1 · OBSERVAR</div>Presenta un fenómeno o figura real relacionada con el objetivo.</div>
+            <div class="route-step"><div class="n">2 · CALCULAR</div>Los estudiantes usan GeoStats para calcular elementos de la figura.</div>
+            <div class="route-step"><div class="n">3 · EXPLICAR</div>Argumentan por qué se obtienen esos valores.</div>
+            <div class="route-step"><div class="n">4 · TRANSFERIR</div>Aplican lo aprendido a un contexto nuevo.</div>
+          </div>
+
+          <div class="field"><label for="guionOut">Guion generado para estudiantes</label><textarea id="guionOut" style="min-height:220px;" readonly></textarea></div>
+          <div class="btn-row"><button class="btn secondary" id="btnCopiarGuion">Copiar guion</button><button class="btn secondary" id="btnLeerGuion">🔊 Leer en voz alta</button></div>
+
+          <h3 style="margin-top:22px;font-family:var(--font-display);">Rúbrica (100 puntos)</h3>
+          <table class="rubric-table">
+            <thead><tr><th>Criterio</th><th>Puntos</th><th>Descripción</th></tr></thead>
+            <tbody>
+              <tr><td>Exactitud matemática</td><td>35</td><td>Cálculos y elementos de la figura correctamente identificados.</td></tr>
+              <tr><td>Argumentación</td><td>30</td><td>Explicación clara y coherente del procedimiento y los resultados.</td></tr>
+              <tr><td>Diseño XR</td><td>20</td><td>Uso pertinente de la representación 3D/inmersiva en el trabajo.</td></tr>
+              <tr><td>Inclusión</td><td>15</td><td>La actividad es accesible y considera distintos estilos de aprendizaje.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+/* =========================================================
+   2. NAVEGACIÓN Y UTILIDADES GENERALES
+   ========================================================= */
+const liveRegion = document.getElementById('live-region');
+function announce(msg){ liveRegion.textContent = msg; }
+
+/* ---- Portada de bienvenida ---- */
+document.documentElement.style.overflow = 'hidden';
+document.getElementById('btnComencemos').addEventListener('click', function(){
+  const splash = document.getElementById('splashScreen');
+  splash.classList.add('hidden');
+  document.documentElement.style.overflow = '';
+  announce('Bienvenido a GeoStats. La aplicación está lista.');
+  const firstNav = document.querySelector('.nav-btn');
+  if(firstNav) firstNav.focus();
+  // Si el usuario dejó abierta la escena 3D antes de que existiera el
+  // contenedor visible, forzamos un evento de resize para que Plotly
+  // recalcule el tamaño de cualquier gráfica que se haya dibujado.
+  window.dispatchEvent(new Event('resize'));
+});
+
+function goTo(sectionId){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('sec-'+sectionId).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    const active = b.dataset.section === sectionId;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-selected', active);
+  });
+  document.getElementById('sidebar').classList.remove('open');
+  announce('Sección '+sectionId+' cargada.');
+  window.scrollTo({top:0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto':'smooth'});
+}
+document.querySelectorAll('.nav-btn').forEach(b=> b.addEventListener('click', ()=>goTo(b.dataset.section)) );
+document.getElementById('menuToggle').addEventListener('click', ()=>{
+  const sb = document.getElementById('sidebar');
+  const open = sb.classList.toggle('open');
+  document.getElementById('menuToggle').setAttribute('aria-expanded', open);
+});
+
+/* ---- Accesibilidad: alto contraste ---- */
+document.getElementById('btnContrast').addEventListener('click', function(){
+  const on = document.documentElement.classList.toggle('contrast');
+  this.setAttribute('aria-pressed', on);
+  announce(on ? 'Alto contraste activado' : 'Alto contraste desactivado');
+});
+
+/* ---- Accesibilidad: narración por voz (SpeechSynthesis) ---- */
+let speechEnabled = true;
+document.getElementById('btnSpeakToggle').addEventListener('click', function(){
+  speechEnabled = !speechEnabled;
+  this.textContent = '🔊 Narración: ' + (speechEnabled ? 'activada' : 'desactivada');
+  this.setAttribute('aria-pressed', !speechEnabled);
+  if(!speechEnabled) speechSynthesis.cancel();
+});
+function speak(text){
+  if(!speechEnabled || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'es-ES'; u.rate = 1;
+  speechSynthesis.speak(u);
+}
+
+/* ---- Verificación del motor matemático (math.js) ---- */
+(function checkEngine(){
+  try{
+    const ok = typeof math !== 'undefined' && math.evaluate('2+2') === 4 && typeof Plotly !== 'undefined';
+    document.getElementById('engineText').textContent = ok ? 'Motor matemático: operativo' : 'Motor matemático: con errores';
+    document.getElementById('engineLed').classList.toggle('bad', !ok);
+  }catch(e){
+    document.getElementById('engineText').textContent = 'Motor matemático: con errores';
+    document.getElementById('engineLed').classList.add('bad');
+  }
+})();
+
+/* ---- helpers numéricos ---- */
+function fmt(n, d=3){
+  if(n===null || n===undefined || Number.isNaN(n)) return '—';
+  if(!isFinite(n)) return n>0 ? '∞' : '−∞';
+  const r = Math.round(n*Math.pow(10,d))/Math.pow(10,d);
+  return r.toString();
+}
+function linspace(a,b,n){ const arr=[]; const step=(b-a)/(n-1); for(let i=0;i<n;i++) arr.push(a+step*i); return arr; }
+function safeEval(expr, scope){
+  try{ return math.evaluate(expr, scope); }catch(e){ return NaN; }
+}
+function darkAxis(title){
+  return { title:{text:title, font:{color:'#8FA3C4'}}, color:'#8FA3C4', gridcolor:'rgba(255,255,255,.08)', zerolinecolor:'rgba(255,255,255,.35)' };
+}
+function basePlotLayout(extra){
+  return Object.assign({
+    paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
+    margin:{l:50,r:20,t:20,b:40}, font:{color:'#F4F8FF'},
+    xaxis:darkAxis('x'), yaxis:darkAxis('y'),
+    showlegend:false
+  }, extra||{});
+}
+const PLOTLY_CFG = {displaylogo:false, responsive:true, modeBarButtonsToRemove:['lasso2d','select2d']};
+
+/* =========================================================
+   3. MOTOR GEOMÉTRICO — cálculos de cada figura
+   (Aquí puedes editar las fórmulas si quieres añadir figuras)
+   ========================================================= */
+const GeoEngine = {
+  recta(a,b,c){
+    const out = {a,b,c};
+    out.esVertical = Math.abs(b) < 1e-9;
+    if(!out.esVertical){
+      out.pendiente = -a/b;
+      out.interceptoY = c/b;
+      out.interceptoX = Math.abs(a)>1e-9 ? c/a : null;
+      out.formaPendienteIntercepto = `y = ${fmt(out.pendiente)}x + ${fmt(out.interceptoY)}`;
+      out.crecimiento = out.pendiente > 0 ? 'creciente' : (out.pendiente < 0 ? 'decreciente' : 'constante (horizontal)');
+    } else {
+      out.pendiente = Infinity;
+      out.interceptoX = c/a;
+      out.interceptoY = null;
+      out.formaPendienteIntercepto = `x = ${fmt(out.interceptoX)}  (recta vertical, pendiente indefinida)`;
+      out.crecimiento = 'vertical (no creciente ni decreciente)';
+    }
+    // dos puntos de la recta
+    if(!out.esVertical){
+      const x1=-4, x2=4;
+      out.p1=[x1, (c-a*x1)/b]; out.p2=[x2,(c-a*x2)/b];
+    } else {
+      out.p1=[out.interceptoX,-4]; out.p2=[out.interceptoX,4];
+    }
+    return out;
+  },
+  puntosRecta(a,b,c,rango=10){
+    if(Math.abs(b)>1e-9){
+      const xs = linspace(-rango,rango,60);
+      return {xs, ys: xs.map(x=>(c-a*x)/b)};
+    } else {
+      const x0 = c/a;
+      const ys = linspace(-rango,rango,60);
+      return {xs: ys.map(()=>x0), ys};
+    }
+  },
+
+  parabola(a,b,c){
+    const out={a,b,c};
+    out.verticeX = -b/(2*a);
+    out.verticeY = c - (b*b)/(4*a);
+    out.eje = `x = ${fmt(out.verticeX)}`;
+    out.concavidad = a>0 ? 'hacia arriba (∪)' : 'hacia abajo (∩)';
+    out.interceptoY = c;
+    out.discriminante = b*b - 4*a*c;
+    if(out.discriminante>0){
+      const r1 = (-b + Math.sqrt(out.discriminante))/(2*a);
+      const r2 = (-b - Math.sqrt(out.discriminante))/(2*a);
+      out.raices = [r1,r2].sort((x,y)=>x-y);
+    } else if(Math.abs(out.discriminante)<1e-9){
+      out.raices = [-b/(2*a)];
+    } else out.raices = [];
+    out.dominio = '(−∞, ∞)';
+    out.rango = a>0 ? `[${fmt(out.verticeY)}, ∞)` : `(−∞, ${fmt(out.verticeY)}]`;
+    out.canonica = `y = ${fmt(a)}(x − ${fmt(out.verticeX)})² + ${fmt(out.verticeY)}`;
+    return out;
+  },
+  puntosParabola(a,b,c,rango=8){
+    const xs = linspace(-rango,rango,80);
+    return {xs, ys: xs.map(x=> a*x*x+b*x+c)};
+  },
+
+  circunferencia(h,k,r){
+    const out={h,k,r};
+    out.diametro = 2*r;
+    out.puntos = { der:[h+r,k], izq:[h-r,k], arr:[h,k+r], abj:[h,k-r] };
+    out.expandida = `x² + y² ${(-2*h)>=0?'+':'-'} ${fmt(Math.abs(2*h))}x ${(-2*k)>=0?'+':'-'} ${fmt(Math.abs(2*k))}y + ${fmt(h*h+k*k-r*r)} = 0`;
+    return out;
+  },
+  puntosCircunferencia(h,k,r){
+    const ts = linspace(0,2*Math.PI,90);
+    return {xs: ts.map(t=>h+r*Math.cos(t)), ys: ts.map(t=>k+r*Math.sin(t))};
+  },
+
+  elipse(h,k,A,B){
+    const out={h,k,A,B};
+    const mayor = Math.max(A,B), menor = Math.min(A,B);
+    out.orientacion = A>=B ? 'horizontal (eje mayor paralelo a X)' : 'vertical (eje mayor paralelo a Y)';
+    out.semiejeMayor = mayor; out.semiejeMenor = menor;
+    out.ejeMayor = 2*mayor; out.ejeMenor = 2*menor;
+    const c = Math.sqrt(Math.max(mayor*mayor-menor*menor,0));
+    out.c = c;
+    out.excentricidad = mayor>0 ? c/mayor : 0;
+    if(A>=B){
+      out.vertices=[[h+A,k],[h-A,k]]; out.coVertices=[[h,k+B],[h,k-B]]; out.focos=[[h+c,k],[h-c,k]];
+    } else {
+      out.vertices=[[h,k+B],[h,k-B]]; out.coVertices=[[h+A,k],[h-A,k]]; out.focos=[[h,k+c],[h,k-c]];
+    }
+    return out;
+  },
+  puntosElipse(h,k,A,B){
+    const ts = linspace(0,2*Math.PI,90);
+    return {xs: ts.map(t=>h+A*Math.cos(t)), ys: ts.map(t=>k+B*Math.sin(t))};
+  },
+
+  hiperbolaRectangular(kk){
+    const out={k:kk};
+    out.asintotaH = 'y = 0';
+    out.asintotaV = 'x = 0';
+    out.centro=[0,0];
+    out.tipo = 'rectangular (xy = k)';
+    return out;
+  },
+  puntosHiperbolaRect(kk, rango=10){
+    const xsPos = linspace(0.15, rango, 60);
+    const xsNeg = linspace(-rango,-0.15,60);
+    return {
+      ramaPos:{xs:xsPos, ys:xsPos.map(x=>kk/x)},
+      ramaNeg:{xs:xsNeg, ys:xsNeg.map(x=>kk/x)}
+    };
+  },
+  hiperbolaEstandar(h,k,A,B){
+    const out={h,k,A,B};
+    const c = Math.sqrt(A*A+B*B);
+    out.c=c; out.excentricidad = c/A;
+    out.vertices=[[h+A,k],[h-A,k]];
+    out.focos=[[h+c,k],[h-c,k]];
+    out.asintota1 = `y = ${fmt(k)} + ${fmt(B/A)}(x − ${fmt(h)})`;
+    out.asintota2 = `y = ${fmt(k)} − ${fmt(B/A)}(x − ${fmt(h)})`;
+    out.tipo = 'estándar (eje transverso horizontal)';
+    return out;
+  },
+  puntosHiperbolaEstandar(h,k,A,B,rango=3.2){
+    const ts = linspace(-1.4,1.4,60).filter(t=>Math.abs(t)<Math.PI/2-0.05);
+    const secTan = ts.map(t=>[1/Math.cos(t), Math.tan(t)]);
+    return {
+      ramaDer:{xs:secTan.map(p=>h+A*p[0]), ys:secTan.map(p=>k+B*p[1])},
+      ramaIzq:{xs:secTan.map(p=>h-A*p[0]), ys:secTan.map(p=>k+B*p[1])}
+    };
+  }
+};
+
+/* =========================================================
+   4. RENDER A-FRAME GENÉRICO — curva en el espacio 3D
+   Toma un arreglo de puntos {x,y} (o varias ramas) y los
+   dibuja como una polilínea sobre un plano con ejes y
+   cuadrícula alámbrica.
+   ========================================================= */
+let _3dGeneration = 0; // evita que loops de animación viejos sigan corriendo tras re-renderizar
+function renderCurve3D(containerId, branches, opts){
+  opts = opts || {};
+  const scale = opts.scale || 0.35;
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  const myGen = ++_3dGeneration;
+  el.innerHTML = '';
+
+  // Construimos la curva como una serie de segmentos (a-frame no tiene "polyline" nativo)
+  let segmentsHTML = '';
+  branches.forEach(br=>{
+    for(let i=0;i<br.xs.length-1;i++){
+      const x1=br.xs[i]*scale, y1=br.ys[i]*scale;
+      const x2=br.xs[i+1]*scale, y2=br.ys[i+1]*scale;
+      segmentsHTML += `<a-entity line="start: ${x1.toFixed(3)} ${y1.toFixed(3)} 0; end: ${x2.toFixed(3)} ${y2.toFixed(3)} 0; color: #00C2FF"></a-entity>`;
+    }
+  });
+
+  // Ejes cartesianos alámbricos
+  const axisLen = 3.2;
+  const axesHTML = `
+    <a-entity line="start: -${axisLen} 0 0; end: ${axisLen} 0 0; color:#B8EF2B"></a-entity>
+    <a-entity line="start: 0 -${axisLen} 0; end: 0 ${axisLen} 0; color:#B8EF2B"></a-entity>
+    <a-entity line="start: 0 0 -${axisLen}; end: 0 0 ${axisLen}; color:#FF7A1A"></a-entity>
+  `;
+  // Cuadrícula en el plano XY
+  let gridHTML = '';
+  for(let i=-3;i<=3;i++){
+    gridHTML += `<a-entity line="start: -3 ${i} 0; end: 3 ${i} 0; color:#294066; opacity:0.6"></a-entity>`;
+    gridHTML += `<a-entity line="start: ${i} -3 0; end: ${i} 3 0; color:#294066; opacity:0.6"></a-entity>`;
+  }
+
+  const sceneId = containerId+'_scene';
+  el.innerHTML = `
+    <div class="aframe-controls">
+      <button data-act="rotate">⟳ Auto-girar</button>
+      <button data-act="reset">⤾ Restablecer</button>
+    </div>
+    <a-scene id="${sceneId}" embedded vr-mode-ui="enabled: true" style="width:100%;height:100%;" loading-screen="dotsColor: #00C2FF; backgroundColor: #050d1f">
+      <a-entity id="${sceneId}_rig" rotation="25 -30 0">
+        ${axesHTML}
+        ${gridHTML}
+        ${segmentsHTML}
+      </a-entity>
+      <a-entity light="type: ambient; intensity: 0.7"></a-entity>
+      <a-entity light="type: directional; intensity: 0.6" position="2 4 3"></a-entity>
+      <a-camera position="0 0.6 5.5" wasd-controls="enabled:true" look-controls="enabled:true"></a-camera>
+      <a-sky color="#050d1f"></a-sky>
+    </a-scene>
+  `;
+
+  let rotating = false, rafId=null;
+  const rig = document.getElementById(sceneId+'_rig');
+  function tick(){
+    if(myGen !== _3dGeneration) return; // esta escena ya fue reemplazada: detener el loop
+    if(rotating && rig){
+      const r = rig.getAttribute('rotation');
+      rig.setAttribute('rotation', {x:r.x, y:(r.y+0.4)%360, z:r.z});
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+  tick();
+  el.querySelector('[data-act="rotate"]').addEventListener('click', function(){
+    rotating = !rotating;
+    this.textContent = rotating ? '⏸ Pausar giro' : '⟳ Auto-girar';
+  });
+  el.querySelector('[data-act="reset"]').addEventListener('click', ()=>{
+    rig.setAttribute('rotation','25 -30 0');
+    rotating=false;
+    el.querySelector('[data-act="rotate"]').textContent = '⟳ Auto-girar';
+  });
+}
+
+/* ---------------------------------------------------------
+   Render 3D "perezoso": A-Frame calcula el tamaño de su
+   lienzo en el momento en que se crea. Si el panel 3D está
+   oculto (display:none, dentro de una pestaña inactiva) ese
+   tamaño queda en 0×0 y la escena nunca se ve, aunque luego
+   se muestre la pestaña. Por eso solo construimos la escena
+   cuando la pestaña "3D/XR" está realmente visible, esperando
+   un frame para que el navegador termine de mostrar el panel.
+   --------------------------------------------------------- */
+let last3DBranches = null;
+function render3DIfVisible(branches){
+  last3DBranches = branches;
+  const pane = document.querySelector('.tab-pane[data-pane="3d"]');
+  if(pane && pane.classList.contains('active')){
+    requestAnimationFrame(()=> renderCurve3D('figPlot3d', branches));
+  }
+}
+
+/* =========================================================
+   5. FIGURAS GEOMÉTRICAS — UI por figura
+   ========================================================= */
+const FIGURE_META = {
+  recta:{
+    nombre:'Recta', ecuacion:'ax + by = c',
+    conjeturas:[
+      'Si mantienes c fijo y duplicas a y b al mismo tiempo (misma proporción entre ellos), ¿la recta cambia o sigue siendo la misma? Pruébalo con los deslizadores y explica qué está pasando con la ecuación.',
+      '¿Qué ocurre con la recta si haces b = 0? ¿Sigue siendo una función y = f(x)? Muévelo hasta llegar a ese valor y describe lo que ves en la gráfica.',
+      'Si aumentas el valor de c dejando a y b fijos, ¿hacia dónde se desplaza la recta completa? Verifica moviendo solo el deslizador de c y describe el patrón que observas.'
+    ],
+    situacion:'Situación real: un domiciliario cobra una tarifa fija de $3.000 más $800 por cada kilómetro recorrido. Si y es el costo total y x los kilómetros, la relación es y = 800x + 3000, equivalente a la forma ax + by = c con a = 800, b = −1, c = −3000. Ajusta los deslizadores para representar esta tarifa y responde: ¿cuánto costaría un domicilio de 6 km?'
+  },
+  parabola:{
+    nombre:'Parábola', ecuacion:'y = ax² + bx + c',
+    conjeturas:[
+      'Fija a y c, y mueve solo b. ¿Hacia qué lado se desplaza el vértice cuando b es positivo? ¿Y cuando es negativo? Explica el patrón que descubras.',
+      '¿Qué pasa con las raíces de la parábola cuando el vértice queda justo sobre el eje X? Ajusta los parámetros hasta lograrlo y relaciona lo que observas con el valor del discriminante.',
+      'Si duplicas el valor de a sin cambiar b ni c, ¿la parábola se vuelve más ancha o más angosta? Compruébalo y explica por qué crees que ocurre.'
+    ],
+    situacion:'Situación real: un jugador patea un balón y su altura en metros, x segundos después, está dada por y = −5x² + 20x. Configura a = −5, b = 20, c = 0 para representar esa trayectoria y responde: ¿en qué segundo alcanza el balón su altura máxima? ¿Cuánto tiempo permanece en el aire antes de tocar el suelo?'
+  },
+  circunferencia:{
+    nombre:'Circunferencia', ecuacion:'(x−h)² + (y−k)² = r²',
+    conjeturas:[
+      'Si mueves el centro (h,k) pero dejas el radio r fijo, ¿la circunferencia cambia de tamaño o solo de posición? Compruébalo con los deslizadores.',
+      '¿Qué le pasa a la circunferencia si r se acerca cada vez más a 0? Experimenta y describe lo que ves en el plano cuando r es muy pequeño.',
+      'Si duplicas el radio, ¿el área se duplica también? Calcula el área para dos valores distintos de r (por ejemplo r=2 y r=4) y compara los resultados.'
+    ],
+    situacion:'Situación real: una noria (rueda de la fortuna) tiene su centro ubicado 15 metros sobre el suelo y un radio de 10 metros. Configura h = 0, k = 15 y r = 10 para representarla y responde: ¿cuál es la altura máxima y cuál la mínima que alcanza una cabina durante el giro completo?'
+  },
+  elipse:{
+    nombre:'Elipse', ecuacion:'(x−h)²/a² + (y−k)²/b² = 1',
+    conjeturas:[
+      'Si haces a = b, ¿qué figura obtienes? Ajusta los deslizadores hasta comprobarlo y explica la relación entre una elipse y una circunferencia.',
+      '¿Qué les pasa a los focos de la elipse cuando a y b se acercan mucho entre sí? ¿Y cuándo se alejan mucho uno del otro?',
+      'Si duplicas tanto a como b sin mover el centro, ¿la excentricidad cambia? Compruébalo con los deslizadores y explica por qué sí o por qué no.'
+    ],
+    situacion:'Situación real: la órbita de un cometa alrededor del Sol tiene forma elíptica, con el Sol ubicado en uno de los focos. Si el semieje mayor de la órbita mide 8 unidades y el semieje menor mide 5, configura a = 8 y b = 5 y responde: ¿cuál es la excentricidad de esta órbita? ¿Qué tan alargada es comparada con una órbita casi circular, de excentricidad cercana a 0?'
+  },
+  hiperbola:{
+    nombre:'Hipérbola', ecuacion:'xy = k  ó  (x−h)²/a² − (y−k)²/b² = 1',
+    conjeturas:[
+      'En la forma xy = k, si cambias k de positivo a negativo, ¿en qué par de cuadrantes aparecen las ramas? Compruébalo moviendo el deslizador.',
+      'En la forma estándar, si aumentas el valor de b dejando a fijo, ¿las ramas se abren más o se cierran más respecto a las asíntotas?',
+      '¿Por qué la excentricidad de una hipérbola siempre es mayor que 1? Relaciona tu respuesta con los valores de a, b y c que aparecen en la tabla de propiedades.'
+    ],
+    situacion:'Situación real: dos estaciones de radio, separadas varios kilómetros, emiten una señal de manera simultánea. Un barco recibe la señal de una estación un poco antes que la de la otra; esa diferencia constante de tiempo (y por tanto de distancia) hace que todos los puntos donde podría estar el barco formen una rama de hipérbola — es el principio del sistema de navegación LORAN. Explora la forma estándar y observa cómo cambian las asíntotas al mover a y b.'
+  }
+};
+
+let currentFigure = 'recta';
+
+function sliderField(id,label,val,min,max,step){
+  return `
+  <div class="field">
+    <label for="${id}">${label}</label>
+    <div class="field-row">
+      <input type="range" id="${id}_r" min="${min}" max="${max}" step="${step}" value="${val}" aria-label="${label} (deslizador)">
+      <span class="slider-val" id="${id}_v">${val}</span>
+    </div>
+    <input type="number" id="${id}" value="${val}" step="${step}" style="margin-top:6px;" aria-label="${label} (numérico)">
+  </div>`;
+}
+function bindSlider(id, onChange){
+  const r = document.getElementById(id+'_r'), n = document.getElementById(id), v = document.getElementById(id+'_v');
+  function sync(val, from){
+    v.textContent = val;
+    if(from!=='r') r.value = val;
+    if(from!=='n') n.value = val;
+    onChange();
+  }
+  r.addEventListener('input', ()=>sync(parseFloat(r.value),'r'));
+  n.addEventListener('input', ()=>{ if(n.value!=='' && !isNaN(parseFloat(n.value))) sync(parseFloat(n.value),'n'); });
+  return ()=>parseFloat(n.value);
+}
+
+function figureShell(figKey){
+  const meta = FIGURE_META[figKey];
+  const conjeturasHTML = meta.conjeturas.map((c,i)=>`
+    <details class="conjetura"${i>0?' style="margin-top:8px;"':''}>
+      <summary>💡 Pregunta de conjetura ${i+1}</summary>
+      <div class="body">${c}</div>
+    </details>`).join('');
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <span class="tag blue">${meta.nombre}</span>
+      <h2 style="font-family:var(--font-display);margin:8px 0 4px;">Ecuación general: ${meta.ecuacion}</h2>
+    </div>
+    <div class="grid-2">
+      <div class="card" id="figControls"></div>
+      <div class="card">
+        <div class="tabs" role="tablist">
+          <button class="tab-btn active" data-tab="2d">Plano 2D</button>
+          <button class="tab-btn" data-tab="3d">Escena 3D / XR</button>
+        </div>
+        <div class="tab-pane active" data-pane="2d"><div class="plot-wrap" id="figPlot2d"></div></div>
+        <div class="tab-pane" data-pane="3d"><div class="aframe-wrap" id="figPlot3d"></div></div>
+        <div class="explain-box" id="figExplain"></div>
+        ${conjeturasHTML}
+        <details class="conjetura" style="margin-top:8px;border-color:rgba(0,194,255,.5);background:rgba(0,194,255,.06);">
+          <summary style="color:var(--blue-bright);">🌍 Situación de la vida real</summary>
+          <div class="body">${meta.situacion}</div>
+        </details>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <span class="tag orange">Sesión de retos</span>
+      <h3 style="font-family:var(--font-display);margin:8px 0 4px;">🎯 Ponte a prueba con esta figura</h3>
+      <p style="color:var(--muted);font-size:.85rem;margin:0 0 6px;">Responde con base en los valores actuales de la figura. Si cambias a, b, c (o h, k, r), los retos se recalculan.</p>
+      <div id="figRetos"></div>
+    </div>`;
+}
+function wireTabs(){
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const scope = b.closest('.card');
+      scope.querySelectorAll('.tab-btn[data-tab]').forEach(x=>x.classList.remove('active'));
+      scope.querySelectorAll('.tab-pane').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      scope.querySelector(`.tab-pane[data-pane="${b.dataset.tab}"]`).classList.add('active');
+      // La pestaña 3D acaba de hacerse visible: recién ahora construimos
+      // la escena A-Frame, con el panel ya mostrado y con tamaño real.
+      if(b.dataset.tab==='3d' && last3DBranches){
+        requestAnimationFrame(()=> renderCurve3D('figPlot3d', last3DBranches));
+      }
+    });
+  });
+}
+
+/* ---------------------------------------------------------
+   Sesión de retos por figura: genera preguntas numéricas a
+   partir de los parámetros actuales y las valida con
+   tolerancia. Se vuelve a llamar cada vez que cambian los
+   deslizadores, así los retos siempre coinciden con la
+   figura que el estudiante tiene en pantalla.
+   --------------------------------------------------------- */
+function renderRetoList(containerId, items){
+  const box = document.getElementById(containerId);
+  if(!box) return;
+  box.innerHTML = items.map((item,i)=>`
+    <div class="reto-item">
+      <p style="margin:0 0 6px;font-size:.87rem;">${i+1}. ${item.question}</p>
+      <div class="field-row">
+        <input type="number" step="any" id="${containerId}_ans${i}" style="width:140px;" aria-label="Respuesta al reto ${i+1}">
+        <button class="btn secondary" data-idx="${i}">Comprobar</button>
+      </div>
+      <div class="quiz-answer" id="${containerId}_res${i}"></div>
+    </div>`).join('');
+  box.querySelectorAll('button[data-idx]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const idx = +btn.dataset.idx;
+      const item = items[idx];
+      const val = parseFloat(document.getElementById(containerId+'_ans'+idx).value);
+      const res = document.getElementById(containerId+'_res'+idx);
+      if(isNaN(val)){ res.textContent='Escribe un número.'; res.className='quiz-answer wrong'; return; }
+      const tol = (item.tol!==undefined) ? item.tol : Math.max(0.05, Math.abs(item.answer)*0.05);
+      if(Math.abs(val-item.answer)<=tol){ res.textContent='¡Correcto! Valor esperado ≈ '+fmt(item.answer,3); res.className='quiz-answer correct'; }
+      else { res.textContent='Aún no. Vuelve a revisar la gráfica y la tabla de propiedades. (Valor esperado ≈ '+fmt(item.answer,3)+')'; res.className='quiz-answer wrong'; }
+    });
+  });
+}
+function retosRecta(a,b,c,d){
+  const items=[];
+  if(!d.esVertical){
+    items.push({question:`¿Cuál es la pendiente (m) de la recta ${fmt(a)}x + ${fmt(b)}y = ${fmt(c)}?`, answer:d.pendiente});
+    if(d.interceptoX!==null) items.push({question:'¿En qué valor de x corta esta recta al eje X?', answer:d.interceptoX});
+    if(d.interceptoY!==null) items.push({question:'¿En qué valor de y corta esta recta al eje Y?', answer:d.interceptoY});
+    const xTest=3;
+    items.push({question:`Usando la ecuación actual, ¿cuál es el valor de y cuando x = ${xTest}?`, answer:(c-a*xTest)/b});
+  } else {
+    items.push({question:'¿En qué valor de x corta esta recta vertical al eje X?', answer:d.interceptoX});
+  }
+  return items;
+}
+function retosParabola(a,b,c,d){
+  const xTest=1;
+  return [
+    {question:'¿Cuál es la coordenada x del vértice de esta parábola?', answer:d.verticeX},
+    {question:'¿Cuál es la coordenada y del vértice de esta parábola?', answer:d.verticeY},
+    {question:'¿Cuántas raíces reales (cortes con el eje X) tiene esta parábola en este momento?', answer:d.raices.length, tol:0.01},
+    {question:`Evalúa la función en x = ${xTest}: ¿cuánto vale y?`, answer:a*xTest*xTest+b*xTest+c}
+  ];
+}
+function retosCircunferencia(h,k,r){
+  return [
+    {question:'¿Cuál es el radio de esta circunferencia?', answer:r},
+    {question:'¿Cuál es la coordenada x del centro?', answer:h},
+    {question:'¿Cuál es la coordenada y del centro?', answer:k},
+    {question:'¿Cuál es el área aproximada de esta circunferencia (usa π ≈ 3.1416)?', answer: Math.PI*r*r, tol: Math.max(0.5, Math.PI*r*r*0.05)}
+  ];
+}
+function retosElipse(h,k,A,B,d){
+  return [
+    {question:'¿Cuál es la longitud del semieje mayor de esta elipse?', answer:d.semiejeMayor},
+    {question:'¿Cuál es la longitud del semieje menor de esta elipse?', answer:d.semiejeMenor},
+    {question:'¿Cuál es la excentricidad actual de la elipse (un valor entre 0 y 1)?', answer:d.excentricidad, tol:0.03},
+    {question:'¿Cuál es la longitud total del eje mayor (2×semieje mayor)?', answer:d.ejeMayor}
+  ];
+}
+function retosHiperbolaRect(kk){
+  const xTest=2;
+  return [
+    {question:'¿Cuál es el valor de k en la ecuación xy = k que ves ahora mismo?', answer:kk},
+    {question:`Si x = ${xTest}, ¿cuál es el valor de y en esta hipérbola (y = k/x)?`, answer:kk/xTest}
+  ];
+}
+function retosHiperbolaEstandar(h,k,A,B,d){
+  return [
+    {question:'¿Cuál es la coordenada x del vértice derecho de esta hipérbola?', answer:h+A},
+    {question:'¿Cuál es la excentricidad actual de esta hipérbola (siempre mayor que 1)?', answer:d.excentricidad, tol:0.03},
+    {question:'¿Cuál es la coordenada x de uno de los focos (el que está a la derecha del centro)?', answer:d.focos[0][0]}
+  ];
+}
+
+function renderFigure(figKey){
+  currentFigure = figKey;
+  const host = document.getElementById('figureHost');
+  host.innerHTML = figureShell(figKey);
+  const controls = document.getElementById('figControls');
+
+  if(figKey==='recta'){
+    controls.innerHTML = sliderField('r_a','a',2,-10,10,0.5)+sliderField('r_b','b',3,-10,10,0.5)+sliderField('r_c','c',6,-20,20,0.5)+`<table class="props" id="r_props"></table>`;
+    const getA=bindSlider('r_a',update), getB=bindSlider('r_b',update), getC=bindSlider('r_c',update);
+    function update(){
+      let a=getA(),b=getB(),c=getC();
+      if(a===0 && b===0){ a=1; }
+      const d = GeoEngine.recta(a,b,c);
+      const pts = GeoEngine.puntosRecta(a,b,c);
+      Plotly.react('figPlot2d', [{x:pts.xs,y:pts.ys,mode:'lines',line:{color:'#00C2FF',width:3}},
+        {x:[d.p1[0],d.p2[0]],y:[d.p1[1],d.p2[1]],mode:'markers',marker:{color:'#B8EF2B',size:9}}],
+        basePlotLayout({xaxis:Object.assign(darkAxis('x'),{range:[-12,12]}), yaxis:Object.assign(darkAxis('y'),{range:[-12,12]})}), PLOTLY_CFG);
+      render3DIfVisible([{xs:pts.xs,ys:pts.ys}]);
+      document.getElementById('r_props').innerHTML = `
+        <tr><td>Ecuación</td><td>${fmt(a)}x + ${fmt(b)}y = ${fmt(c)}</td></tr>
+        <tr><td>Pendiente (m)</td><td>${d.esVertical?'indefinida':fmt(d.pendiente)}</td></tr>
+        <tr><td>Intercepto en Y</td><td>${d.interceptoY===null?'no tiene':fmt(d.interceptoY)}</td></tr>
+        <tr><td>Intercepto en X</td><td>${d.interceptoX===null?'no tiene':fmt(d.interceptoX)}</td></tr>
+        <tr><td>Forma pendiente-intercepto</td><td>${d.formaPendienteIntercepto}</td></tr>
+        <tr><td>Comportamiento</td><td>${d.crecimiento}</td></tr>
+        <tr><td>Dos puntos de la recta</td><td>(${fmt(d.p1[0])}, ${fmt(d.p1[1])}) y (${fmt(d.p2[0])}, ${fmt(d.p2[1])})</td></tr>`;
+      const explain = `<strong>Paso a paso — pendiente:</strong>
+        <ol>
+          <li>Partimos de ${fmt(a)}x + ${fmt(b)}y = ${fmt(c)}.</li>
+          <li>Despejamos y: y = (${fmt(c)} − ${fmt(a)}x) / ${fmt(b)}.</li>
+          <li>La pendiente es el coeficiente de x: m = −a/b = ${d.esVertical?'indefinida (recta vertical)':fmt(d.pendiente)}.</li>
+          <li>Como m ${d.esVertical?'no existe':(d.pendiente>0?'> 0, la recta crece':'< 0, la recta decrece')}, la recta es <em>${d.crecimiento}</em>.</li>
+        </ol>`;
+      document.getElementById('figExplain').innerHTML = explain;
+      renderRetoList('figRetos', retosRecta(a,b,c,d));
+    }
+    update();
+  }
+
+  if(figKey==='parabola'){
+    controls.innerHTML = sliderField('p_a','a',1,-6,6,0.25)+sliderField('p_b','b',-4,-15,15,0.5)+sliderField('p_c','c',3,-15,15,0.5)+`<table class="props" id="p_props"></table>`;
+    const getA=bindSlider('p_a',update), getB=bindSlider('p_b',update), getC=bindSlider('p_c',update);
+    function update(){
+      let a=getA(); if(a===0) a=0.01;
+      const b=getB(), c=getC();
+      const d = GeoEngine.parabola(a,b,c);
+      const pts = GeoEngine.puntosParabola(a,b,c);
+      const traces=[{x:pts.xs,y:pts.ys,mode:'lines',line:{color:'#00C2FF',width:3}},
+        {x:[d.verticeX],y:[d.verticeY],mode:'markers',marker:{color:'#FF7A1A',size:11}}];
+      if(d.raices.length) traces.push({x:d.raices,y:d.raices.map(()=>0),mode:'markers',marker:{color:'#B8EF2B',size:10,symbol:'x'}});
+      Plotly.react('figPlot2d', traces, basePlotLayout(), PLOTLY_CFG);
+      render3DIfVisible([{xs:pts.xs,ys:pts.ys}]);
+      document.getElementById('p_props').innerHTML = `
+        <tr><td>Vértice</td><td>(${fmt(d.verticeX)}, ${fmt(d.verticeY)})</td></tr>
+        <tr><td>Eje de simetría</td><td>${d.eje}</td></tr>
+        <tr><td>Concavidad</td><td>${d.concavidad}</td></tr>
+        <tr><td>Intercepto en Y</td><td>(0, ${fmt(d.interceptoY)})</td></tr>
+        <tr><td>Discriminante</td><td>${fmt(d.discriminante)}</td></tr>
+        <tr><td>Raíces</td><td>${d.raices.length? d.raices.map(r=>fmt(r)).join(' , ') : 'no reales'}</td></tr>
+        <tr><td>Dominio</td><td>${d.dominio}</td></tr>
+        <tr><td>Rango</td><td>${d.rango}</td></tr>
+        <tr><td>Forma canónica</td><td>${d.canonica}</td></tr>`;
+      document.getElementById('figExplain').innerHTML = `<strong>Cómo afectan a, b, c:</strong>
+        <ul>
+          <li><b>a</b> controla la concavidad y el «ancho»: |a| grande → parábola más cerrada.</li>
+          <li><b>b</b>, junto con a, desplaza el vértice horizontalmente (x = −b/2a).</li>
+          <li><b>c</b> es el valor de y cuando x=0 (desplaza la curva verticalmente).</li>
+        </ul>
+        <strong>Paso a paso — vértice:</strong>
+        <ol><li>x_v = −b/(2a) = −(${fmt(b)})/(2·${fmt(a)}) = ${fmt(d.verticeX)}</li>
+        <li>y_v = f(x_v) = ${fmt(d.verticeY)}</li></ol>`;
+      renderRetoList('figRetos', retosParabola(a,b,c,d));
+    }
+    update();
+  }
+
+  if(figKey==='circunferencia'){
+    controls.innerHTML = sliderField('c_h','h (centro x)',0,-10,10,0.5)+sliderField('c_k','k (centro y)',0,-10,10,0.5)+sliderField('c_r','r (radio)',4,0.5,10,0.25)+`<table class="props" id="c_props"></table>`;
+    const getH=bindSlider('c_h',update), getK=bindSlider('c_k',update), getR=bindSlider('c_r',update);
+    function update(){
+      const h=getH(),k=getK(),r=Math.max(getR(),0.1);
+      const d = GeoEngine.circunferencia(h,k,r);
+      const pts = GeoEngine.puntosCircunferencia(h,k,r);
+      Plotly.react('figPlot2d', [{x:pts.xs,y:pts.ys,mode:'lines',line:{color:'#00C2FF',width:3}},
+        {x:[h],y:[k],mode:'markers',marker:{color:'#FF7A1A',size:9}}],
+        basePlotLayout({yaxis:Object.assign(darkAxis('y'),{scaleanchor:'x'})}), PLOTLY_CFG);
+      render3DIfVisible([{xs:pts.xs,ys:pts.ys}]);
+      document.getElementById('c_props').innerHTML = `
+        <tr><td>Centro</td><td>(${fmt(h)}, ${fmt(k)})</td></tr>
+        <tr><td>Radio</td><td>${fmt(r)}</td></tr>
+        <tr><td>Diámetro</td><td>${fmt(d.diametro)}</td></tr>
+        <tr><td>Punto derecho</td><td>(${fmt(d.puntos.der[0])}, ${fmt(d.puntos.der[1])})</td></tr>
+        <tr><td>Punto superior</td><td>(${fmt(d.puntos.arr[0])}, ${fmt(d.puntos.arr[1])})</td></tr>
+        <tr><td>Ecuación desarrollada</td><td style="font-size:.78rem;">${d.expandida}</td></tr>`;
+      document.getElementById('figExplain').innerHTML = `<strong>Lectura de la ecuación:</strong>
+        <p>En (x−h)² + (y−k)² = r², el punto (h,k) fija la posición del centro y r controla qué tan grande es la circunferencia. Cambiar h desplaza la figura horizontalmente, k la desplaza verticalmente y r la agranda o encoge sin mover el centro.</p>`;
+      renderRetoList('figRetos', retosCircunferencia(h,k,r));
+    }
+    update();
+  }
+
+  if(figKey==='elipse'){
+    controls.innerHTML = sliderField('e_h','h (centro x)',0,-8,8,0.5)+sliderField('e_k','k (centro y)',0,-8,8,0.5)+sliderField('e_a','a (semieje X)',5,0.5,10,0.25)+sliderField('e_b','b (semieje Y)',3,0.5,10,0.25)+`<table class="props" id="e_props"></table>`;
+    const getH=bindSlider('e_h',update), getK=bindSlider('e_k',update), getA=bindSlider('e_a',update), getB=bindSlider('e_b',update);
+    function update(){
+      const h=getH(),k=getK(),A=Math.max(getA(),0.2),B=Math.max(getB(),0.2);
+      const d = GeoEngine.elipse(h,k,A,B);
+      const pts = GeoEngine.puntosElipse(h,k,A,B);
+      const traces=[{x:pts.xs,y:pts.ys,mode:'lines',line:{color:'#00C2FF',width:3}},
+        {x:[h],y:[k],mode:'markers',marker:{color:'#FF7A1A',size:8}}];
+      if(d.focos) traces.push({x:d.focos.map(f=>f[0]),y:d.focos.map(f=>f[1]),mode:'markers',marker:{color:'#B8EF2B',size:9,symbol:'diamond'}});
+      Plotly.react('figPlot2d', traces, basePlotLayout({yaxis:Object.assign(darkAxis('y'),{scaleanchor:'x'})}), PLOTLY_CFG);
+      render3DIfVisible([{xs:pts.xs,ys:pts.ys}]);
+      document.getElementById('e_props').innerHTML = `
+        <tr><td>Centro</td><td>(${fmt(h)}, ${fmt(k)})</td></tr>
+        <tr><td>Semieje mayor</td><td>${fmt(d.semiejeMayor)}</td></tr>
+        <tr><td>Semieje menor</td><td>${fmt(d.semiejeMenor)}</td></tr>
+        <tr><td>Eje mayor</td><td>${fmt(d.ejeMayor)}</td></tr>
+        <tr><td>Eje menor</td><td>${fmt(d.ejeMenor)}</td></tr>
+        <tr><td>Vértices</td><td>${d.vertices.map(v=>`(${fmt(v[0])}, ${fmt(v[1])})`).join(' , ')}</td></tr>
+        <tr><td>Co-vértices</td><td>${d.coVertices.map(v=>`(${fmt(v[0])}, ${fmt(v[1])})`).join(' , ')}</td></tr>
+        <tr><td>Focos</td><td>${d.focos.map(v=>`(${fmt(v[0])}, ${fmt(v[1])})`).join(' , ')}</td></tr>
+        <tr><td>Excentricidad</td><td>${fmt(d.excentricidad)}</td></tr>
+        <tr><td>Orientación</td><td>${d.orientacion}</td></tr>`;
+      document.getElementById('figExplain').innerHTML = `<strong>Efecto de a y b:</strong>
+        <p>Cuando a = b la elipse es una circunferencia (excentricidad 0). Mientras más distintos son a y b, más «alargada» y excéntrica es la elipse (excentricidad más cercana a 1).</p>`;
+      renderRetoList('figRetos', retosElipse(h,k,A,B,d));
+    }
+    update();
+  }
+
+  if(figKey==='hiperbola'){
+    controls.innerHTML = `
+      <div class="tabs"><button class="tab-btn active" data-htab="rect">Rectangular (xy=k)</button><button class="tab-btn" data-htab="std">Estándar</button></div>
+      <div class="tab-pane active" data-hpane="rect">${sliderField('h_k','k',4,-15,15,0.5)}</div>
+      <div class="tab-pane" data-hpane="std">${sliderField('hs_h','h (centro x)',0,-8,8,0.5)}${sliderField('hs_k','k (centro y)',0,-8,8,0.5)}${sliderField('hs_a','a',3,0.5,8,0.25)}${sliderField('hs_b','b',2,0.5,8,0.25)}</div>
+      <table class="props" id="h_props"></table>`;
+    document.querySelectorAll('[data-htab]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        document.querySelectorAll('[data-htab]').forEach(x=>x.classList.remove('active'));
+        document.querySelectorAll('[data-hpane]').forEach(x=>x.classList.remove('active'));
+        b.classList.add('active');
+        document.querySelector(`[data-hpane="${b.dataset.htab}"]`).classList.add('active');
+        updateH();
+      });
+    });
+    const getK=bindSlider('h_k',()=>updateH());
+    const getHh=bindSlider('hs_h',()=>updateH()), getHk=bindSlider('hs_k',()=>updateH()), getHa=bindSlider('hs_a',()=>updateH()), getHb=bindSlider('hs_b',()=>updateH());
+    function updateH(){
+      const mode = document.querySelector('[data-htab].active').dataset.htab;
+      if(mode==='rect'){
+        let kk=getK(); if(kk===0) kk=0.01;
+        const d = GeoEngine.hiperbolaRectangular(kk);
+        const pts = GeoEngine.puntosHiperbolaRect(kk);
+        Plotly.react('figPlot2d',[
+          {x:pts.ramaPos.xs,y:pts.ramaPos.ys,mode:'lines',line:{color:'#00C2FF',width:3}},
+          {x:pts.ramaNeg.xs,y:pts.ramaNeg.ys,mode:'lines',line:{color:'#00C2FF',width:3}}
+        ], basePlotLayout({xaxis:Object.assign(darkAxis('x'),{range:[-10,10]}), yaxis:Object.assign(darkAxis('y'),{range:[-10,10]})}), PLOTLY_CFG);
+        render3DIfVisible([pts.ramaPos, pts.ramaNeg]);
+        document.getElementById('h_props').innerHTML = `
+          <tr><td>Tipo</td><td>${d.tipo}</td></tr>
+          <tr><td>Centro</td><td>(0, 0)</td></tr>
+          <tr><td>Asíntota horizontal</td><td>${d.asintotaH}</td></tr>
+          <tr><td>Asíntota vertical</td><td>${d.asintotaV}</td></tr>
+          <tr><td>Ramas</td><td>${kk>0?'primer y tercer cuadrante':'segundo y cuarto cuadrante'}</td></tr>`;
+        document.getElementById('figExplain').innerHTML = `<p>xy = k es una hipérbola rectangular: sus asíntotas son los propios ejes coordenados. Si k>0 las ramas están en el I y III cuadrante; si k<0, en el II y IV.</p>`;
+        renderRetoList('figRetos', retosHiperbolaRect(kk));
+      } else {
+        const h=getHh(),k=getHk(),A=Math.max(getHa(),0.2),B=Math.max(getHb(),0.2);
+        const d = GeoEngine.hiperbolaEstandar(h,k,A,B);
+        const pts = GeoEngine.puntosHiperbolaEstandar(h,k,A,B);
+        Plotly.react('figPlot2d',[
+          {x:pts.ramaDer.xs,y:pts.ramaDer.ys,mode:'lines',line:{color:'#00C2FF',width:3}},
+          {x:pts.ramaIzq.xs,y:pts.ramaIzq.ys,mode:'lines',line:{color:'#00C2FF',width:3}},
+          {x:d.vertices.map(v=>v[0]),y:d.vertices.map(v=>v[1]),mode:'markers',marker:{color:'#FF7A1A',size:9}}
+        ], basePlotLayout(), PLOTLY_CFG);
+        render3DIfVisible([pts.ramaDer, pts.ramaIzq]);
+        document.getElementById('h_props').innerHTML = `
+          <tr><td>Tipo</td><td>${d.tipo}</td></tr>
+          <tr><td>Centro</td><td>(${fmt(h)}, ${fmt(k)})</td></tr>
+          <tr><td>Vértices</td><td>${d.vertices.map(v=>`(${fmt(v[0])}, ${fmt(v[1])})`).join(' , ')}</td></tr>
+          <tr><td>Focos</td><td>${d.focos.map(v=>`(${fmt(v[0])}, ${fmt(v[1])})`).join(' , ')}</td></tr>
+          <tr><td>Excentricidad</td><td>${fmt(d.excentricidad)}</td></tr>
+          <tr><td>Asíntotas</td><td style="font-size:.8rem;">${d.asintota1}<br>${d.asintota2}</td></tr>`;
+        document.getElementById('figExplain').innerHTML = `<p>Las ramas de la hipérbola se acercan cada vez más a las asíntotas pero nunca las tocan. La excentricidad (siempre &gt;1) mide qué tan abiertas son las ramas.</p>`;
+        renderRetoList('figRetos', retosHiperbolaEstandar(h,k,A,B,d));
+      }
+    }
+    updateH();
+  }
+
+  wireTabs();
+  // botón de narración de la explicación
+  const explainBox = document.getElementById('figExplain');
+  const speakBtn = document.createElement('button');
+  speakBtn.className='speak-btn'; speakBtn.textContent='🔊 Escuchar explicación';
+  speakBtn.addEventListener('click', ()=> speak(explainBox.textContent));
+  explainBox.after(speakBtn);
+}
+document.querySelectorAll('.figure-chip[data-fig]').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('.figure-chip[data-fig]').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    renderFigure(chip.dataset.fig);
+  });
+});
+
+/* =========================================================
+   6. MODO EXPLORAR — solo deslizadores, foco en descubrimiento
+   ========================================================= */
+function renderExplore(figKey){
+  const host = document.getElementById('exploreHost');
+  host.innerHTML = `
+    <div class="grid-2">
+      <div class="card" id="expControls"></div>
+      <div class="card">
+        <div class="plot-wrap" id="expPlot"></div>
+        <div class="stat-grid" id="expStats"></div>
+      </div>
+    </div>`;
+  const controls = document.getElementById('expControls');
+
+  if(figKey==='recta'){
+    controls.innerHTML = sliderField('x_a','a',1,-8,8,0.5)+sliderField('x_b','b',1,-8,8,0.5)+sliderField('x_c','c',2,-15,15,0.5);
+    const gA=bindSlider('x_a',u), gB=bindSlider('x_b',u), gC=bindSlider('x_c',u);
+    function u(){
+      let a=gA(),b=gB(),c=gC(); if(a===0&&b===0)a=1;
+      const d=GeoEngine.recta(a,b,c), pts=GeoEngine.puntosRecta(a,b,c);
+      Plotly.react('expPlot',[{x:pts.xs,y:pts.ys,mode:'lines',line:{color:'#00C2FF',width:3}}],basePlotLayout({xaxis:Object.assign(darkAxis('x'),{range:[-12,12]}),yaxis:Object.assign(darkAxis('y'),{range:[-12,12]})}),PLOTLY_CFG);
+      document.getElementById('expStats').innerHTML = statBoxes([['Pendiente',d.esVertical?'∞':fmt(d.pendiente)],['Interc. Y',d.interceptoY===null?'—':fmt(d.interceptoY)],['Interc. X',d.interceptoX===null?'—':fmt(d.interceptoX)],['Comportamiento',d.crecimiento]]);
+    } u();
+  }
+  if(figKey==='parabola'){
+    controls.innerHTML = sliderField('x_pa','a',1,-6,6,0.25)+sliderField('x_pb','b',0,-15,15,0.5)+sliderField('x_pc','c',0,-15,15,0.5);
+    const gA=bindSlider('x_pa',u), gB=bindSlider('x_pb',u), gC=bindSlider('x_pc',u);
+    function u(){
+      let a=gA(); if(a===0)a=0.01; const b=gB(),c=gC();
+      const d=GeoEngine.parabola(a,b,c), pts=GeoEngine.puntosParabola(a,b,c);
+      Plotly.react('expPlot',[{x:pts.xs,y:pts.ys,mode:'lines',line:{color:'#00C2FF',width:3}},{x:[d.verticeX],y:[d.verticeY],mode:'markers',marker:{color:'#FF7A1A',size:10}}],basePlotLayout(),PLOTLY_CFG);
+      document.getElementById('expStats').innerHTML = statBoxes([['Vértice',`(${fmt(d.verticeX)}, ${fmt(d.verticeY)})`],['Concavidad',a>0?'∪':'∩'],['Discriminante',fmt(d.discriminante)],['Raíces',d.raices.length?d.raices.map(r=>fmt(r)).join(', '):'ninguna']]);
+    } u();
+  }
+  if(figKey==='circunferencia'){
+    controls.innerHTML = sliderField('x_ch','h',0,-10,10,0.5)+sliderField('x_ck','k',0,-10,10,0.5)+sliderField('x_cr','r',4,0.5,10,0.25);
+    const gH=bindSlider('x_ch',u), gK=bindSlider('x_ck',u), gR=bindSlider('x_cr',u);
+    function u(){
+      const h=gH(),k=gK(),r=Math.max(gR(),0.1);
+      const pts=GeoEngine.puntosCircunferencia(h,k,r);
+      Plotly.react('expPlot',[{x:pts.xs,y:pts.ys,mode:'lines',line:{color:'#00C2FF',width:3}}],basePlotLayout({yaxis:Object.assign(darkAxis('y'),{scaleanchor:'x'})}),PLOTLY_CFG);
+      document.getElementById('expStats').innerHTML = statBoxes([['Centro',`(${fmt(h)}, ${fmt(k)})`],['Radio',fmt(r)],['Diámetro',fmt(2*r)]]);
+    } u();
+  }
+  if(figKey==='elipse'){
+    controls.innerHTML = sliderField('x_eh','h',0,-8,8,0.5)+sliderField('x_ek','k',0,-8,8,0.5)+sliderField('x_ea','a',5,0.5,10,0.25)+sliderField('x_eb','b',3,0.5,10,0.25);
+    const gH=bindSlider('x_eh',u), gK=bindSlider('x_ek',u), gA=bindSlider('x_ea',u), gB=bindSlider('x_eb',u);
+    function u(){
+      const h=gH(),k=gK(),A=Math.max(gA(),0.2),B=Math.max(gB(),0.2);
+      const d=GeoEngine.elipse(h,k,A,B), pts=GeoEngine.puntosElipse(h,k,A,B);
+      Plotly.react('expPlot',[{x:pts.xs,y:pts.ys,mode:'lines',line:{color:'#00C2FF',width:3}}],basePlotLayout({yaxis:Object.assign(darkAxis('y'),{scaleanchor:'x'})}),PLOTLY_CFG);
+      document.getElementById('expStats').innerHTML = statBoxes([['Excentricidad',fmt(d.excentricidad)],['Eje mayor',fmt(d.ejeMayor)],['Eje menor',fmt(d.ejeMenor)],['Orientación', A>=B?'horizontal':'vertical']]);
+    } u();
+  }
+  if(figKey==='hiperbola'){
+    controls.innerHTML = sliderField('x_hk','k',4,-15,15,0.5);
+    const gK=bindSlider('x_hk',u);
+    function u(){
+      let kk=gK(); if(kk===0)kk=0.01;
+      const pts=GeoEngine.puntosHiperbolaRect(kk);
+      Plotly.react('expPlot',[{x:pts.ramaPos.xs,y:pts.ramaPos.ys,mode:'lines',line:{color:'#00C2FF',width:3}},{x:pts.ramaNeg.xs,y:pts.ramaNeg.ys,mode:'lines',line:{color:'#00C2FF',width:3}}],basePlotLayout({xaxis:Object.assign(darkAxis('x'),{range:[-10,10]}),yaxis:Object.assign(darkAxis('y'),{range:[-10,10]})}),PLOTLY_CFG);
+      document.getElementById('expStats').innerHTML = statBoxes([['k',fmt(kk)],['Cuadrantes', kk>0?'I y III':'II y IV']]);
+    } u();
+  }
+}
+function statBoxes(pairs){
+  return pairs.map(([l,v])=>`<div class="stat-box"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+}
+document.querySelectorAll('.figure-chip[data-figx]').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('.figure-chip[data-figx]').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    renderExplore(chip.dataset.figx);
+  });
+});
+
+/* =========================================================
+   7. ESTADÍSTICA — datos, descriptivos y 7 distribuciones
+   ========================================================= */
+function parseData(text){
+  return text.split(/[\s,;]+/).map(s=>parseFloat(s)).filter(n=>!isNaN(n));
+}
+function mean(arr){ return arr.reduce((a,b)=>a+b,0)/arr.length; }
+function variance(arr){ const m=mean(arr); return arr.reduce((a,b)=>a+(b-m)*(b-m),0)/(arr.length-1||1); }
+
+let currentData = parseData(document.getElementById('statData').value);
+
+function updateDescStats(){
+  const arr = currentData;
+  if(!arr.length){ document.getElementById('descStats').innerHTML=''; return; }
+  const m=mean(arr), v=variance(arr), sd=Math.sqrt(v);
+  document.getElementById('descStats').innerHTML = statBoxes([
+    ['n', arr.length],['Media', fmt(m)],['Varianza', fmt(v)],['Desv. estándar', fmt(sd)],
+    ['Mínimo', fmt(Math.min(...arr))],['Máximo', fmt(Math.max(...arr))]
+  ]);
+}
+document.getElementById('btnAnalyze').addEventListener('click', ()=>{
+  currentData = parseData(document.getElementById('statData').value);
+  updateDescStats();
+  renderDistribution(currentDist);
+  announce('Datos analizados: '+currentData.length+' valores.');
+});
+document.getElementById('btnClearData').addEventListener('click', ()=>{
+  document.getElementById('statData').value=''; currentData=[]; updateDescStats();
+});
+updateDescStats();
+
+/* ---- funciones de densidad / masa de probabilidad ---- */
+function factorial(n){ return n<=1?1:n*factorial(n-1); }
+function combin(n,k){ if(k<0||k>n) return 0; return factorial(n)/(factorial(k)*factorial(n-k)); }
+const PDF = {
+  uniforme:(x,a,b)=> (x>=a && x<=b) ? 1/(b-a) : 0,
+  bernoulli:(k,p)=> k===1?p:(k===0?1-p:0),
+  exponencial:(x,lambda)=> x>=0 ? lambda*Math.exp(-lambda*x) : 0,
+  binomial:(k,n,p)=> combin(n,k)*Math.pow(p,k)*Math.pow(1-p,n-k),
+  poisson:(k,lambda)=> Math.pow(lambda,k)*Math.exp(-lambda)/factorial(k),
+  gaussiana:(x,mu,sigma)=> (1/(sigma*Math.sqrt(2*Math.PI)))*Math.exp(-0.5*Math.pow((x-mu)/sigma,2)),
+  chi2:(x,k)=> x<=0 ? 0 : (1/(Math.pow(2,k/2)*math.gamma(k/2)))*Math.pow(x,k/2-1)*Math.exp(-x/2)
+};
+
+const DIST_META = {
+  uniforme:{
+    nombre:'Distribución uniforme continua', formula:'f(x) = 1 / (b − a) ,  a ≤ x ≤ b',
+    texto:'Todos los valores en el intervalo [a,b] son igualmente probables. Es el modelo de "no tener ninguna preferencia" dentro de un rango.',
+    contexto:'Contexto: un autobús pasa por una parada en cualquier minuto, de forma equiprobable, entre el minuto 0 y el minuto 10 después de la hora en punto. El minuto exacto de llegada X sigue una distribución uniforme en [0,10].',
+    datos:'1.2, 3.4, 7.8, 0.5, 9.1, 4.4, 6.6, 2.2, 8.8, 5.5, 3.3, 7.1, 0.9, 9.6, 6.0',
+    params:[{id:'a',label:'a (mínimo)',def:0,min:-10,max:10,step:0.5},{id:'b',label:'b (máximo)',def:10,min:-10,max:20,step:0.5}]
+  },
+  bernoulli:{
+    nombre:'Distribución de Bernoulli', formula:'P(X=1)=p ,  P(X=0)=1−p',
+    texto:'Modela un experimento con solo dos resultados posibles (éxito/fracaso), como lanzar una moneda una sola vez.',
+    contexto:'Contexto: en una fábrica de bombillos, cada unidad inspeccionada puede salir "defectuosa" (X=1, con probabilidad p) o "buena" (X=0, con probabilidad 1−p).',
+    datos:'1,0,0,1,0,0,0,1,0,1,0,0,1,0,0,0,1,0,0,1',
+    params:[{id:'p',label:'p (prob. de éxito)',def:0.5,min:0,max:1,step:0.01}]
+  },
+  exponencial:{
+    nombre:'Distribución exponencial', formula:'f(x) = λ e^(−λx) ,  x ≥ 0',
+    texto:'Modela el tiempo de espera entre eventos que ocurren de manera continua e independiente a una tasa constante λ (ej. tiempo entre llamadas a un call center).',
+    contexto:'Contexto: el tiempo X, en minutos, entre la llegada de dos clientes consecutivos a una caja registradora, sigue una distribución exponencial con tasa λ (clientes por minuto).',
+    datos:'0.3, 1.2, 0.5, 2.8, 0.1, 3.4, 0.9, 1.6, 0.4, 2.1, 0.7, 4.0, 0.2, 1.0, 0.6',
+    params:[{id:'lambda',label:'λ (tasa)',def:0.5,min:0.05,max:3,step:0.05}]
+  },
+  binomial:{
+    nombre:'Distribución binomial', formula:'P(X=k) = C(n,k) pᵏ (1−p)ⁿ⁻ᵏ',
+    texto:'Cuenta el número de éxitos en n ensayos independientes de Bernoulli con probabilidad p de éxito, como el número de caras al lanzar n monedas.',
+    contexto:'Contexto: n estudiantes presentan un examen de verdadero/falso adivinando al azar cada respuesta. X = número de respuestas correctas, con probabilidad p de acertar cada pregunta.',
+    datos:'6,7,5,8,6,7,9,5,6,8,7,6,5,9,6,7,8,6,5,7',
+    params:[{id:'n',label:'n (ensayos)',def:12,min:1,max:40,step:1},{id:'p',label:'p (prob. éxito)',def:0.5,min:0,max:1,step:0.01}]
+  },
+  poisson:{
+    nombre:'Distribución de Poisson', formula:'P(X=k) = λᵏ e^(−λ) / k!',
+    texto:'Modela el número de eventos raros que ocurren en un intervalo fijo de tiempo o espacio, con tasa promedio λ (ej. número de correos recibidos por hora).',
+    contexto:'Contexto: X = número de correos electrónicos que llegan a una bandeja de entrada durante una hora de trabajo, con una tasa promedio λ de correos por hora.',
+    datos:'3,5,4,6,2,5,7,3,4,5,6,3,8,4,5',
+    params:[{id:'lambda',label:'λ (media)',def:4,min:0.5,max:20,step:0.5}]
+  },
+  gaussiana:{
+    nombre:'Distribución gaussiana (normal)', formula:'f(x) = (1/σ√(2π)) e^(−(x−μ)²/2σ²)',
+    texto:'La distribución "de campana" más común en fenómenos naturales y sociales: estaturas, errores de medición, calificaciones, etc.',
+    contexto:'Contexto: las estaturas X (en cm) de un grupo de estudiantes de la licenciatura siguen aproximadamente una distribución normal con media μ y desviación estándar σ.',
+    datos:'162,170,158,175,168,164,172,159,166,171,163,169,157,174,165',
+    params:[{id:'mu',label:'μ (media)',def:5,min:-15,max:15,step:0.5},{id:'sigma',label:'σ (desv. estándar)',def:2,min:0.2,max:10,step:0.1}]
+  },
+  chi2:{
+    nombre:'Distribución chi-cuadrado (χ²)', formula:'f(x) = 1/(2^(k/2)Γ(k/2)) x^(k/2−1) e^(−x/2)',
+    texto:'Aparece al sumar cuadrados de variables normales estándar independientes; es clave en pruebas de bondad de ajuste e independencia.',
+    contexto:'Contexto: en una prueba de bondad de ajuste con k grados de libertad, el estadístico de prueba X calculado a partir de los datos sigue una distribución chi-cuadrado.',
+    datos:'3.2,5.6,2.1,7.4,4.4,6.0,3.9,8.1,2.8,5.0,4.7,6.6,3.3,7.9,4.1',
+    params:[{id:'k',label:'k (grados de libertad)',def:4,min:1,max:20,step:1}]
+  }
+};
+
+/* Integra numéricamente (regla del trapecio) el área bajo una curva ya
+   dibujada, o suma las barras discretas, hasta un umbral. Se usa para
+   que las preguntas de "lectura de la gráfica" respondan exactamente
+   lo que el estudiante ve pintado en el plano. */
+function cumulativeFromSeries(xs, ys, threshold, discrete){
+  let s = 0;
+  if(discrete){
+    for(let i=0;i<xs.length;i++){ if(xs[i] <= threshold) s += ys[i]; }
+  } else {
+    for(let i=0;i<xs.length-1;i++){
+      const x0=xs[i], x1=xs[i+1], y0=ys[i], y1=ys[i+1];
+      if(x1 <= threshold){ s += (y0+y1)/2*(x1-x0); }
+      else if(x0 < threshold){
+        const frac=(threshold-x0)/(x1-x0||1);
+        const yT = y0 + (y1-y0)*frac;
+        s += (y0+yT)/2*(threshold-x0);
+        break;
+      } else break;
+    }
+  }
+  return s;
+}
+
+let currentDist = 'uniforme';
+function renderDistribution(key){
+  currentDist = key;
+  const meta = DIST_META[key];
+  const host = document.getElementById('distHost');
+
+  const paramFields = meta.params.map(p=> sliderField('d_'+p.id, p.label, p.def, p.min, p.max, p.step)).join('');
+  host.innerHTML = `
+    <div class="grid-2">
+      <div class="card">
+        <span class="tag green">${meta.nombre}</span>
+        <div class="dist-formula">${meta.formula}</div>
+        <p style="color:var(--muted);font-size:.85rem;line-height:1.55;">${meta.texto}</p>
+        <div class="explain-box" style="margin-top:10px;">${meta.contexto}
+          <div><button class="btn secondary" id="btnCargarEjemplo" style="margin-top:10px;">📥 Cargar datos de ejemplo de este contexto</button></div>
+        </div>
+        ${paramFields}
+        <div id="distProps" class="stat-grid"></div>
+      </div>
+      <div class="card">
+        <div class="plot-wrap" id="distPlot"></div>
+        <div class="quiz-box">
+          <strong>🧠 Analiza la gráfica y responde</strong>
+          <p style="font-size:.78rem;color:var(--muted);margin:6px 0 10px;">Usa la curva/barras de arriba (y los datos, si los cargaste) para contestar.</p>
+          <div id="distQuizList"></div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('btnCargarEjemplo').addEventListener('click', ()=>{
+    document.getElementById('statData').value = meta.datos;
+    currentData = parseData(meta.datos);
+    updateDescStats();
+    update();
+    announce('Datos de ejemplo cargados para '+meta.nombre+'.');
+  });
+
+  const getters = {};
+  meta.params.forEach(p=>{ getters[p.id] = bindSlider('d_'+p.id, update); });
+
+  function update(){
+    const vals = {}; meta.params.forEach(p=> vals[p.id]=getters[p.id]());
+    let traceCurve, xRange, propsHTML='', discrete=false, quizItems=[];
+    if(key==='uniforme'){
+      const {a,b}=vals; xRange=linspace(a-1,b+1,200);
+      const ys=xRange.map(x=>PDF.uniforme(x,a,b));
+      traceCurve = {x:xRange, y:ys, mode:'lines', fill:'tozeroy', line:{color:'#B8EF2B'}};
+      propsHTML = statBoxes([['Media',fmt((a+b)/2)],['Varianza',fmt(Math.pow(b-a,2)/12)]]);
+      const t = a+(b-a)*0.4;
+      quizItems=[
+        {question:`¿Cuál es f(x) para x = ${fmt((a+b)/2)} (dentro del intervalo [a,b])?`, answer:PDF.uniforme((a+b)/2,a,b)},
+        {question:`Según el área bajo la curva (el ancho del rectángulo), ¿cuál es la probabilidad de que el bus llegue antes del minuto ${fmt(t)}?`, answer:cumulativeFromSeries(xRange,ys,t,false), tol:0.05}
+      ];
+    }
+    if(key==='bernoulli'){
+      const {p}=vals; xRange=[0,1];
+      const ys=[PDF.bernoulli(0,p),PDF.bernoulli(1,p)];
+      traceCurve = {x:[0,1], y:ys, type:'bar', marker:{color:'#B8EF2B'}, width:0.5};
+      propsHTML = statBoxes([['Media',fmt(p)],['Varianza',fmt(p*(1-p))]]);
+      quizItems=[
+        {question:'Según la altura de la barra en X=1, ¿cuál es la probabilidad de obtener un bombillo defectuoso?', answer:p, tol:0.03},
+        {question:'Si las dos barras deben sumar 1, ¿cuánto debe medir la barra de X=0 (bombillo bueno)?', answer:1-p, tol:0.03}
+      ];
+    }
+    if(key==='exponencial'){
+      const {lambda}=vals; xRange=linspace(0,8/lambda,200);
+      const ys=xRange.map(x=>PDF.exponencial(x,lambda));
+      traceCurve = {x:xRange, y:ys, mode:'lines', fill:'tozeroy', line:{color:'#B8EF2B'}};
+      propsHTML = statBoxes([['Media',fmt(1/lambda)],['Varianza',fmt(1/(lambda*lambda))]]);
+      const t = 2/lambda;
+      quizItems=[
+        {question:`¿Cuánto vale f(x) en x = 1/λ = ${fmt(1/lambda)}?`, answer:PDF.exponencial(1/lambda,lambda)},
+        {question:`Observando el área bajo la curva entre 0 y t = ${fmt(t)}, ¿cuál es la probabilidad de que el próximo cliente llegue antes de ${fmt(t)} minutos?`, answer:cumulativeFromSeries(xRange,ys,t,false), tol:0.05}
+      ];
+    }
+    if(key==='binomial'){
+      const {n,p}=vals; const ks=Array.from({length:n+1},(_,i)=>i);
+      const ys=ks.map(k=>PDF.binomial(k,n,p));
+      traceCurve = {x:ks, y:ys, type:'bar', marker:{color:'#B8EF2B'}};
+      propsHTML = statBoxes([['Media',fmt(n*p)],['Varianza',fmt(n*p*(1-p))]]);
+      const k1=Math.round(n*p);
+      quizItems=[
+        {question:`Con n=${n}, p=${fmt(p)}, ¿cuánto vale la altura de la barra en X=${k1}?`, answer:PDF.binomial(k1,n,p)},
+        {question:`Sumando las alturas de las barras desde X=0 hasta X=${k1}, ¿cuál es la probabilidad de que a lo sumo ${k1} estudiantes acierten?`, answer:cumulativeFromSeries(ks,ys,k1,true), tol:0.05}
+      ];
+    }
+    if(key==='poisson'){
+      const {lambda}=vals; const kmax=Math.max(10,Math.ceil(lambda*3));
+      const ks=Array.from({length:kmax+1},(_,i)=>i);
+      const ys=ks.map(k=>PDF.poisson(k,lambda));
+      traceCurve = {x:ks, y:ys, type:'bar', marker:{color:'#B8EF2B'}};
+      propsHTML = statBoxes([['Media',fmt(lambda)],['Varianza',fmt(lambda)]]);
+      const k1=Math.round(lambda);
+      quizItems=[
+        {question:`Con λ=${fmt(lambda)}, ¿cuánto vale la altura de la barra en X=${k1}?`, answer:PDF.poisson(k1,lambda)},
+        {question:`Sumando las barras desde X=0 hasta X=${k1}, ¿cuál es la probabilidad de recibir ${k1} correos o menos en una hora?`, answer:cumulativeFromSeries(ks,ys,k1,true), tol:0.05}
+      ];
+    }
+    if(key==='gaussiana'){
+      const {mu,sigma}=vals; xRange=linspace(mu-4*sigma,mu+4*sigma,220);
+      const ys=xRange.map(x=>PDF.gaussiana(x,mu,sigma));
+      traceCurve = {x:xRange, y:ys, mode:'lines', fill:'tozeroy', line:{color:'#B8EF2B'}};
+      propsHTML = statBoxes([['Media',fmt(mu)],['Varianza',fmt(sigma*sigma)]]);
+      const t = mu+sigma;
+      quizItems=[
+        {question:`¿Cuánto vale f(x) en x = μ = ${fmt(mu)} (el punto más alto de la curva)?`, answer:PDF.gaussiana(mu,mu,sigma)},
+        {question:`Observando el área bajo la curva hasta x = μ+σ = ${fmt(t)}, ¿qué proporción de estudiantes mide menos de eso? (Pista: regla empírica 68-95-99.7)`, answer:cumulativeFromSeries(xRange,ys,t,false), tol:0.06}
+      ];
+    }
+    if(key==='chi2'){
+      const {k}=vals; xRange=linspace(0.01,k*3+10,220);
+      const ys=xRange.map(x=>PDF.chi2(x,k));
+      traceCurve = {x:xRange, y:ys, mode:'lines', fill:'tozeroy', line:{color:'#B8EF2B'}};
+      propsHTML = statBoxes([['Media',fmt(k)],['Varianza',fmt(2*k)]]);
+      quizItems=[
+        {question:`¿Cuál es la media de una χ² con k=${k} grados de libertad?`, answer:k},
+        {question:`Observando el área bajo la curva hasta x = k = ${k} (su propia media), ¿cuál es la probabilidad de que el estadístico χ² sea menor que ${k}?`, answer:cumulativeFromSeries(xRange,ys,k,false), tol:0.06}
+      ];
+    }
+
+    const traces=[traceCurve];
+    if(currentData.length){
+      traces.push({x:currentData, type:'histogram', histnorm:'probability density', marker:{color:'rgba(0,194,255,.35)'}, name:'Datos'});
+    }
+    Plotly.react('distPlot', traces, basePlotLayout({barmode:'overlay'}), PLOTLY_CFG);
+    document.getElementById('distProps').innerHTML = propsHTML;
+    renderRetoList('distQuizList', quizItems);
+  }
+  update();
+}
+document.querySelectorAll('.figure-chip[data-dist]').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('.figure-chip[data-dist]').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    renderDistribution(chip.dataset.dist);
+  });
+});
+
+/* =========================================================
+   8. MODO DOCENTE — guion, rúbrica, guardado y import/export
+   ========================================================= */
+function buildGuion(){
+  const t = document.getElementById('tTitulo').value || '(sin título)';
+  const nivel = document.getElementById('tNivel').value;
+  const dur = document.getElementById('tDuracion').value || '(sin definir)';
+  const obj = document.getElementById('tObjetivo').value || '(sin definir)';
+  const preg = document.getElementById('tPregunta').value || '(sin definir)';
+  const evid = document.getElementById('tEvidencia').value || '(sin definir)';
+  return `SECUENCIA DIDÁCTICA: ${t}
+Nivel: ${nivel}   |   Duración: ${dur}
+
+Objetivo: ${obj}
+
+Pregunta retadora para abrir la clase:
+"${preg}"
+
+RUTA DE TRABAJO
+1) OBSERVAR — Presenta a los estudiantes la situación o figura de partida y pídeles que describan lo que ven, sin cálculos todavía.
+2) CALCULAR — Usando GeoStats, cada estudiante o grupo ingresa la ecuación correspondiente y calcula los elementos pedidos (vértice, focos, pendiente, distribución, etc.).
+3) EXPLICAR — En parejas, deben justificar en voz alta por qué obtuvieron esos valores, usando el lenguaje matemático correcto.
+4) TRANSFERIR — Se propone una situación nueva (real o hipotética) donde deban aplicar lo aprendido sin ayuda directa del profesor.
+
+Evidencia de aprendizaje esperada:
+${evid}
+
+(Guion generado automáticamente por GeoStats — edítalo según tu grupo.)`;
+}
+document.getElementById('btnGenerarGuion').addEventListener('click', ()=>{
+  document.getElementById('guionOut').value = buildGuion();
+  announce('Guion generado.');
+});
+document.getElementById('btnCopiarGuion').addEventListener('click', ()=>{
+  const ta = document.getElementById('guionOut');
+  ta.select();
+  navigator.clipboard?.writeText(ta.value).then(()=> showToast('Guion copiado al portapapeles.'));
+});
+document.getElementById('btnLeerGuion').addEventListener('click', ()=> speak(document.getElementById('guionOut').value || 'No hay guion generado todavía.'));
+
+function currentTeacherState(){
+  return {
+    titulo:document.getElementById('tTitulo').value, nivel:document.getElementById('tNivel').value,
+    duracion:document.getElementById('tDuracion').value, objetivo:document.getElementById('tObjetivo').value,
+    pregunta:document.getElementById('tPregunta').value, evidencia:document.getElementById('tEvidencia').value,
+    guion:document.getElementById('guionOut').value
+  };
+}
+document.getElementById('btnGuardarLocal').addEventListener('click', ()=>{
+  try{
+    const list = JSON.parse(localStorage.getItem('geostats_secuencias')||'[]');
+    list.push(Object.assign({fecha:new Date().toISOString()}, currentTeacherState()));
+    localStorage.setItem('geostats_secuencias', JSON.stringify(list));
+    showToast('Secuencia guardada localmente (localStorage).');
+  }catch(e){ showToast('No se pudo guardar: '+e.message); }
+});
+document.getElementById('btnExportar').addEventListener('click', ()=>{
+  const data = currentTeacherState();
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=(data.titulo||'secuencia_geostats')+'.json'; a.click();
+  URL.revokeObjectURL(url);
+});
+document.getElementById('inputImportar').addEventListener('change', (e)=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      document.getElementById('tTitulo').value = data.titulo||'';
+      document.getElementById('tDuracion').value = data.duracion||'';
+      document.getElementById('tObjetivo').value = data.objetivo||'';
+      document.getElementById('tPregunta').value = data.pregunta||'';
+      document.getElementById('tEvidencia').value = data.evidencia||'';
+      document.getElementById('guionOut').value = data.guion||'';
+      if(data.nivel) document.getElementById('tNivel').value = data.nivel;
+      showToast('Proyecto importado correctamente.');
+    }catch(err){ showToast('Archivo JSON inválido.'); }
+  };
+  reader.readAsText(file);
+});
+
+function showToast(msg){
+  const t = document.createElement('div');
+  t.className='toast'; t.textContent=msg; t.setAttribute('role','status');
+  document.body.appendChild(t);
+  announce(msg);
+  setTimeout(()=> t.remove(), 3600);
+}
+
+/* =========================================================
+   9. INICIALIZACIÓN
+   ========================================================= */
+renderFigure('recta');
+renderExplore('recta');
+renderDistribution('uniforme');
+</script>
+</body>
+</html>
